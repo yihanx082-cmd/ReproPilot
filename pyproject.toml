@@ -9,7 +9,9 @@ description = "Evidence-backed reproduction and repair agent for ML papers"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "openai>=2.15,<3",
     "pydantic>=2.10,<3",
+    "pymupdf>=1.25,<2",
     "pyyaml>=6.0,<7",
     "typer>=0.15,<1",
 ]

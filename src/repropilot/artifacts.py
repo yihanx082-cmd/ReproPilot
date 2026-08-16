@@ -4,6 +4,7 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from repropilot.domain import EvidenceEvent, RunRequest, RunStatus
@@ -43,6 +44,11 @@ class ArtifactStore:
             for line in self.events_path.read_text(encoding="utf-8").splitlines()
             if line
         ]
+
+    def write_json_artifact(self, filename: str, value: Any) -> Path:
+        path = self.run_dir / filename
+        self._write_json_atomically(path, value)
+        return path
 
     @staticmethod
     def _write_json_atomically(path: Path, value: object) -> None:

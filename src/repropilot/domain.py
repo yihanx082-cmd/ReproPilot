@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 
 class DatasetRequest(BaseModel):
@@ -51,3 +51,45 @@ class EvidenceEvent(BaseModel):
     kind: EventKind
     message: str = Field(min_length=1)
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaperPage(BaseModel):
+    page: int = Field(ge=1)
+    text: str
+
+
+class PaperClaim(BaseModel):
+    field: str = Field(min_length=1)
+    value: JsonValue
+    unit: str | None = None
+    evidence_text: str = Field(min_length=1)
+    page: int = Field(ge=1)
+    confidence: float = Field(ge=0, le=1)
+
+
+class PaperResult(BaseModel):
+    metric: str = Field(min_length=1)
+    value: float
+    unit: str | None = None
+    evidence_text: str = Field(min_length=1)
+    page: int = Field(ge=1)
+    confidence: float = Field(ge=0, le=1)
+
+
+class PaperSpec(BaseModel):
+    claims: list[PaperClaim] = Field(default_factory=list)
+    reported_results: list[PaperResult] = Field(default_factory=list)
+    unresolved_fields: list[str] = Field(default_factory=list)
+
+
+class ModelUsage(BaseModel):
+    model: str = Field(min_length=1)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    duration_seconds: float = Field(ge=0)
+    estimated_cost_usd: float | None = Field(default=None, ge=0)
+
+
+class PaperExtraction(BaseModel):
+    spec: PaperSpec
+    usage: ModelUsage

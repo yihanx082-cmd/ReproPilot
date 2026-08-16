@@ -1,0 +1,34 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets
+.env
+!.env.example
+
+# ReproPilot runtime outputs
+runs/
+artifacts/
+logs/
+
+# Large local assets
+data/
+datasets/
+models/
+weights/
+*.pt
+*.pth
+*.ckpt
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local Git worktrees
+.worktrees/

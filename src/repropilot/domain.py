@@ -93,3 +93,35 @@ class ModelUsage(BaseModel):
 class PaperExtraction(BaseModel):
     spec: PaperSpec
     usage: ModelUsage
+
+
+RepoExtractor = Literal["yaml", "json", "toml", "python_ast", "readme"]
+
+
+class RepoFact(BaseModel):
+    field: str = Field(min_length=1)
+    value: JsonValue
+    source_path: str = Field(min_length=1)
+    line_start: int = Field(ge=1)
+    extractor: RepoExtractor
+
+
+class FindingStatus(StrEnum):
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    UNKNOWN = "unknown"
+
+
+class FindingSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlignmentFinding(BaseModel):
+    field: str = Field(min_length=1)
+    paper_claim: PaperClaim | None = None
+    repo_fact: RepoFact | None = None
+    status: FindingStatus
+    severity: FindingSeverity
+    explanation: str = Field(min_length=1)

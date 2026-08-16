@@ -1,0 +1,10 @@
+optimizer:
+  learning_rate: 0.001
+training:
+  batch_size: 64
+dataset:
+  split_strategy: image_random
+metrics:
+  f1_average: micro
+model:
+  pretrained_weights: resnet50-v1

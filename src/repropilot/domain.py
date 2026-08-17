@@ -34,6 +34,27 @@ class RunRequest(BaseModel):
 
 class RunStatus(StrEnum):
     CREATED = "CREATED"
+    RUNNING = "RUNNING"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
+    TIMED_OUT = "TIMED_OUT"
+
+
+class RunState(StrEnum):
+    INGEST = "INGEST"
+    AUDIT = "AUDIT"
+    BUILD = "BUILD"
+    SMOKE_RUN = "SMOKE_RUN"
+    DIAGNOSE = "DIAGNOSE"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    APPLY_PATCH = "APPLY_PATCH"
+    VERIFY = "VERIFY"
+    ROLLBACK = "ROLLBACK"
+    COMPARE = "COMPARE"
+    SCORE = "SCORE"
+    REPORT = "REPORT"
 
 
 class EventKind(StrEnum):
@@ -167,3 +188,18 @@ class PatchProposal(BaseModel):
     risk: RiskLevel
     targeted_test: list[str] = Field(min_length=1)
     allowed_paths: list[str] = Field(min_length=1)
+
+
+class ApprovalDecision(BaseModel):
+    patch_id: str = Field(min_length=1)
+    patch_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved: bool
+    reason: str | None = None
+
+
+class RunSummary(BaseModel):
+    run_dir: Path
+    status: RunStatus
+    states: list[RunState]
+    attempts: int = Field(ge=0)
+    reason: str | None = None

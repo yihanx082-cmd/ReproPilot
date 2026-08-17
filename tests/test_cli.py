@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -66,3 +67,48 @@ def test_run_rejects_invalid_config_before_creating_artifacts(tmp_path: Path):
 
     assert result.exit_code != 0
     assert not output_root.exists()
+
+
+def test_approve_records_a_sha_bound_decision(tmp_path: Path):
+    app = _app()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    diff = "diff --git a/x b/x\n"
+    patch_sha256 = hashlib.sha256(diff.encode()).hexdigest()
+    (run_dir / "pending_patch.json").write_text(
+        json.dumps({"patch_id": "patch-1", "patch_sha256": patch_sha256, "diff": diff}),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["approve", str(run_dir), "patch-1"])
+
+    assert result.exit_code == 0, result.output
+    approval = json.loads((run_dir / "approval.json").read_text(encoding="utf-8"))
+    assert approval == {
+        "approved": True,
+        "patch_id": "patch-1",
+        "patch_sha256": patch_sha256,
+        "reason": None,
+    }
+
+
+def test_reject_requires_and_records_a_reason(tmp_path: Path):
+    app = _app()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    diff = "diff --git a/x b/x\n"
+    patch_sha256 = hashlib.sha256(diff.encode()).hexdigest()
+    (run_dir / "pending_patch.json").write_text(
+        json.dumps({"patch_id": "patch-1", "patch_sha256": patch_sha256, "diff": diff}),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["reject", str(run_dir), "patch-1", "--reason", "Metric semantics differ."],
+    )
+
+    assert result.exit_code == 0, result.output
+    approval = json.loads((run_dir / "approval.json").read_text(encoding="utf-8"))
+    assert approval["approved"] is False
+    assert approval["reason"] == "Metric semantics differ."

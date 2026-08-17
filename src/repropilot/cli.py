@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
 import typer
+from openai import OpenAI
 from pydantic import ValidationError
 
 from repropilot.artifacts import ArtifactStore
-from repropilot.domain import ApprovalDecision
+from repropilot.domain import ApprovalDecision, RunStatus
+from repropilot.orchestrator import ReproPilot
+from repropilot.paper import OpenAICompatiblePaperLLM
+from repropilot.services import DefaultRunServices, OpenAICompatiblePatchGenerator
 from repropilot.settings import load_run_request
 
 app = typer.Typer(no_args_is_help=True)
@@ -21,16 +26,32 @@ def run(
         typer.Option(exists=True, dir_okay=False, readable=True),
     ],
     output_root: Annotated[Path, typer.Option()] = Path("runs"),
+    validate_only: Annotated[bool, typer.Option()] = False,
 ) -> None:
-    """Validate a run configuration and create its evidence directory."""
+    """Execute a bounded reproduction run, or only validate its configuration."""
     try:
         request = load_run_request(config)
     except (OSError, ValueError, ValidationError) as exc:
         typer.echo(f"Invalid configuration: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
-    store = ArtifactStore.create(output_root, request)
-    typer.echo(f"Created run: {store.run_dir}")
+    if validate_only:
+        store = ArtifactStore.create(output_root, request)
+        typer.echo(f"Validated configuration and created run: {store.run_dir}")
+        return
+
+    try:
+        services = _default_services()
+        summary = ReproPilot(output_root, services).run(request)
+    except (OSError, ValueError, RuntimeError) as exc:
+        typer.echo(f"Cannot start run: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"Run: {summary.run_dir}")
+    typer.echo(f"Status: {summary.status.value}")
+    if (summary.run_dir / "report.html").exists():
+        typer.echo(f"Report: {summary.run_dir / 'report.html'}")
+    if summary.status not in {RunStatus.SUCCEEDED, RunStatus.WAITING_APPROVAL}:
+        raise typer.Exit(code=1)
 
 
 @app.command("inspect")
@@ -66,6 +87,26 @@ def reject(
     typer.echo(f"Rejected patch: {patch_id}")
 
 
+@app.command()
+def resume(
+    run_dir: Annotated[Path, typer.Argument(exists=True, file_okay=False)],
+) -> None:
+    """Resume a paused run using the recorded approval or rejection."""
+    approval_path = run_dir / "approval.json"
+    try:
+        approval = ApprovalDecision.model_validate_json(
+            approval_path.read_text(encoding="utf-8")
+        )
+        summary = ReproPilot(run_dir.parent, _default_services()).resume(run_dir, approval)
+    except (OSError, ValueError, RuntimeError, ValidationError) as exc:
+        typer.echo(f"Cannot resume run: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"Status: {summary.status.value}")
+    typer.echo(f"Report: {summary.run_dir / 'report.html'}")
+    if summary.status is not RunStatus.SUCCEEDED:
+        raise typer.Exit(code=1)
+
+
 def _record_approval(
     run_dir: Path,
     patch_id: str,
@@ -90,6 +131,21 @@ def _record_approval(
     )
     ArtifactStore(run_dir).write_json_artifact(
         "approval.json", decision.model_dump(mode="json")
+    )
+
+
+def _default_services() -> DefaultRunServices:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    model = os.environ.get("OPENAI_MODEL")
+    if not api_key or not model:
+        raise RuntimeError(
+            "OPENAI_API_KEY and OPENAI_MODEL are required; use --validate-only to check config"
+        )
+    base_url = os.environ.get("OPENAI_BASE_URL") or None
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    return DefaultRunServices(
+        paper_llm=OpenAICompatiblePaperLLM(client, model),
+        patch_generator=OpenAICompatiblePatchGenerator(client, model),
     )
 
 

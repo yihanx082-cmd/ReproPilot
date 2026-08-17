@@ -41,7 +41,14 @@ def test_run_creates_a_valid_run_that_inspect_can_read(tmp_path: Path):
 
     run_result = runner.invoke(
         app,
-        ["run", "--config", str(config_path), "--output-root", str(output_root)],
+        [
+            "run",
+            "--config",
+            str(config_path),
+            "--output-root",
+            str(output_root),
+            "--validate-only",
+        ],
     )
 
     assert run_result.exit_code == 0, run_result.output

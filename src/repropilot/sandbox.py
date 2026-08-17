@@ -37,13 +37,15 @@ class DockerSandbox:
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self._command_number = 0
 
-    def build(self, context: Path, image_tag: str) -> CommandResult:
+    def build(
+        self, context: Path, image_tag: str, timeout: float = 1200
+    ) -> CommandResult:
         context = context.resolve()
         dockerfile = context / "Dockerfile"
         dockerfile_sha256 = hashlib.sha256(dockerfile.read_bytes()).hexdigest()
         self.image_tag = image_tag
         argv = [self.docker_executable, "build", "--tag", image_tag, str(context)]
-        result = self._execute(argv, timeout=1200, label="build")
+        result = self._execute(argv, timeout=timeout, label="build")
         digest = None
         if result.exit_code == 0:
             inspection = subprocess.run(

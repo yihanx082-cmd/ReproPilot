@@ -136,3 +136,34 @@ class CommandResult(BaseModel):
     argv: list[str] = Field(default_factory=list)
     image_digest: str | None = None
     dockerfile_sha256: str | None = None
+
+
+class DiagnosisCategory(StrEnum):
+    DEPENDENCY = "dependency"
+    PATH = "path"
+    CONFIGURATION = "configuration"
+    CUDA_RUNTIME = "cuda_runtime"
+    DATA = "data"
+    METRIC = "metric"
+    UNKNOWN = "unknown"
+
+
+class Diagnosis(BaseModel):
+    category: DiagnosisCategory
+    root_cause: str = Field(min_length=1)
+    evidence: list[str] = Field(min_length=1)
+    related_files: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+
+
+class RiskLevel(StrEnum):
+    LOW = "low"
+    HIGH = "high"
+
+
+class PatchProposal(BaseModel):
+    diff: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+    risk: RiskLevel
+    targeted_test: list[str] = Field(min_length=1)
+    allowed_paths: list[str] = Field(min_length=1)

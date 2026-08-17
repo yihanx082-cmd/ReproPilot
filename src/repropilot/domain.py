@@ -125,3 +125,14 @@ class AlignmentFinding(BaseModel):
     status: FindingStatus
     severity: FindingSeverity
     explanation: str = Field(min_length=1)
+
+
+class CommandResult(BaseModel):
+    exit_code: int
+    stdout_path: Path
+    stderr_path: Path
+    duration_seconds: float = Field(ge=0)
+    timed_out: bool = False
+    argv: list[str] = Field(default_factory=list)
+    image_digest: str | None = None
+    dockerfile_sha256: str | None = None

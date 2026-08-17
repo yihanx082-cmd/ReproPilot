@@ -1,0 +1,5 @@
+learning_rate: 0.0001
+dataset_path: data/synthetic.txt
+device: cpu
+metric: macro_f1
+split_strategy: group

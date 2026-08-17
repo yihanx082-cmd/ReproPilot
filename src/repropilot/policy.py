@@ -95,7 +95,13 @@ def analyze_patch(diff: str) -> PatchAnalysis:
 def assess_patch(diff: str, diagnosis: Diagnosis) -> PatchRiskDecision:
     analysis = analyze_patch(diff)
     reasons: list[str] = []
-    lowered = diff.casefold()
+    changed_text = "\n".join(
+        line[1:]
+        for line in diff.splitlines()
+        if (line.startswith("+") and not line.startswith("+++"))
+        or (line.startswith("-") and not line.startswith("---"))
+    )
+    lowered = changed_text.casefold()
 
     if diagnosis.category in {"data", "metric"}:
         reasons.append(f"{diagnosis.category.value} behavior can change reported results")

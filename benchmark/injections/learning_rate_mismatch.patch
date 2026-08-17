@@ -1,0 +1,10 @@
+diff --git a/config.yaml b/config.yaml
+--- a/config.yaml
++++ b/config.yaml
+@@ -1,5 +1,5 @@
+-learning_rate: 0.0001
++learning_rate: 0.001
+ dataset_path: data/synthetic.txt
+ device: cpu
+ metric: macro_f1
+ split_strategy: group

@@ -1,0 +1,9 @@
+diff --git a/settings.json b/settings.json
+--- a/settings.json
++++ b/settings.json
+@@ -1,4 +1,4 @@
+ {
+-  "split_strategy": "group",
++  "split_strategy": "random",
+   "metric": "macro_f1"
+ }

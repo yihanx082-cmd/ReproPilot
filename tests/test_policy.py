@@ -164,3 +164,24 @@ def test_external_download_patch_requires_approval(added_line: str):
 
     assert decision.level == RiskLevel.HIGH
     assert decision.requires_approval
+
+
+def test_semantic_marker_in_unchanged_context_does_not_require_approval():
+    Diagnosis, RiskLevel, assess_patch = _patch_contracts()
+    diff = """diff --git a/config.yaml b/config.yaml
+--- a/config.yaml
++++ b/config.yaml
+@@ -1,3 +1,3 @@
+-learning_rate: 0.001
++learning_rate: 0.0001
+ split_strategy: group
+ metric: macro_f1
+"""
+
+    decision = assess_patch(
+        diff,
+        _diagnosis(Diagnosis, "configuration", "config.yaml"),
+    )
+
+    assert decision.level == RiskLevel.LOW
+    assert not decision.requires_approval

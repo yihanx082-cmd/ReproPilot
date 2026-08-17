@@ -1,0 +1,4 @@
+{
+  "split_strategy": "group",
+  "metric": "macro_f1"
+}

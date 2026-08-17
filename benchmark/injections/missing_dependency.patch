@@ -1,0 +1,11 @@
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -1,6 +1,7 @@
+ from pathlib import Path
+ 
+ import yaml
++import repropilot_missing_fixture_dependency
+ 
+ 
+ def main() -> None:

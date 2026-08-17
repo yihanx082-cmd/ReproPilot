@@ -257,6 +257,13 @@ class ScoreDimension(BaseModel):
         return self
 
 
+class RepairAttempt(BaseModel):
+    diagnosis: Diagnosis | None = None
+    patch: PatchProposal | None = None
+    approval: ApprovalDecision | None = None
+    test_result: CommandResult | None = None
+
+
 class EvidenceBundle(BaseModel):
     environment: DimensionEvidence
     data: DimensionEvidence
@@ -271,6 +278,17 @@ class EvidenceBundle(BaseModel):
     dataset_subset: bool = False
     epoch_count_differs: bool = False
     model_differs: bool = False
+    status: RunStatus | None = None
+    terminal_reason: str | None = None
+    paper_source: str | None = None
+    repository_source: str | None = None
+    dataset_source: str | None = None
+    alignment_findings: list[AlignmentFinding] = Field(default_factory=list)
+    commands: list[list[str]] = Field(default_factory=list)
+    repair_attempts: list[RepairAttempt] = Field(default_factory=list)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    model_usage: list[ModelUsage] = Field(default_factory=list)
+    unresolved_risks: list[str] = Field(default_factory=list)
 
 
 class ReproScore(BaseModel):

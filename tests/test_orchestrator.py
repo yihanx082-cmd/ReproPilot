@@ -281,3 +281,44 @@ def test_rejected_patch_goes_directly_to_report(tmp_path: Path):
     assert summary.status == RunStatus.REJECTED
     assert summary.states[-1] == "REPORT"
     assert services.apply_calls == []
+
+
+def test_internal_failure_still_generates_a_terminal_report(tmp_path: Path):
+    _, ReproPilot, RunStatus = _orchestrator_contracts()
+    services = FakeServices(tmp_path, smoke_exit_codes=[0])
+
+    def fail_ingest(run_request: RunRequest, store: Any) -> None:
+        raise RuntimeError("fixture ingestion failure")
+
+    services.ingest = fail_ingest  # type: ignore[method-assign]
+    summary = ReproPilot(tmp_path / "runs", services).run(request(tmp_path))
+
+    assert summary.status == RunStatus.FAILED
+    assert summary.reason == "Internal failure: fixture ingestion failure"
+    assert summary.states[-1] == "REPORT"
+    assert services.report_statuses == [RunStatus.FAILED]
+
+
+def test_internal_failure_after_approval_still_generates_report(tmp_path: Path):
+    ApprovalDecision, ReproPilot, RunStatus = _orchestrator_contracts()
+    services = FakeServices(tmp_path, smoke_exit_codes=[1], patch_risk=RiskLevel.HIGH)
+    paused = ReproPilot(tmp_path / "runs", services).run(request(tmp_path))
+    pending = json.loads((paused.run_dir / "pending_patch.json").read_text(encoding="utf-8"))
+
+    def fail_apply(proposal: PatchProposal, diagnosis: Diagnosis, store: Any) -> None:
+        raise RuntimeError("fixture patch failure")
+
+    services.apply_patch = fail_apply  # type: ignore[method-assign]
+    summary = ReproPilot(tmp_path / "unused", services).resume(
+        paused.run_dir,
+        ApprovalDecision(
+            patch_id=pending["patch_id"],
+            patch_sha256=pending["patch_sha256"],
+            approved=True,
+        ),
+    )
+
+    assert summary.status == RunStatus.FAILED
+    assert summary.reason == "Internal failure: fixture patch failure"
+    assert summary.states[-1] == "REPORT"
+    assert services.report_statuses == [RunStatus.FAILED]

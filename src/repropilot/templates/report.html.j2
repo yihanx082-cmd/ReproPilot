@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReproPilot evidence report</title>
+  <style>
+    :root { color-scheme: light; --ink: #18212f; --muted: #667085; --line: #d0d5dd; --paper: #fff; --wash: #f7f9fc; --accent: #175cd3; --warn: #b54708; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--wash); color: var(--ink); font: 15px/1.55 system-ui, sans-serif; }
+    main { width: min(1040px, calc(100% - 32px)); margin: 32px auto; }
+    header, section { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; margin: 0 0 16px; padding: 22px; }
+    h1, h2, h3 { margin-top: 0; }
+    h1 { margin-bottom: 4px; }
+    h2 { font-size: 19px; }
+    h3 { font-size: 15px; margin-top: 18px; }
+    .muted { color: var(--muted); }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 18px; }
+    .card { background: var(--wash); border-radius: 8px; padding: 14px; }
+    .value { display: block; font-size: 21px; font-weight: 700; }
+    .warning { border-left: 5px solid var(--warn); background: #fffaeb; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 13px; }
+    pre, code { font-family: ui-monospace, Consolas, monospace; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #101828; color: #f2f4f7; border-radius: 8px; padding: 14px; }
+    .tag { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="muted">ReproPilot evidence report</p>
+    <h1>{{ score.label.value }}</h1>
+    <div class="summary">
+      <div class="card"><span class="muted">Run status</span><span class="value">{{ bundle.status.value if bundle.status else "unknown" }}</span></div>
+      <div class="card"><span class="muted">Credibility score</span><span class="value">{{ "%.1f"|format(score.total) }} / 100</span></div>
+      <div class="card"><span class="muted">Comparable</span><span class="value">{{ "yes" if score.comparable else "no" }}</span></div>
+      <div class="card"><span class="muted">Duration</span><span class="value">{{ "%.2f seconds"|format(bundle.duration_seconds) if bundle.duration_seconds is not none else "unknown" }}</span></div>
+    </div>
+    <p><strong>Terminal reason:</strong> {{ bundle.terminal_reason or "unknown" }}</p>
+  </header>
+
+  {% if score.label.value == "PROVISIONAL_SMOKE_RUN" %}
+  <section class="warning">
+    <h2>Scope warning</h2>
+    <p>This is a reduced smoke run, not a full paper reproduction. Result values are not comparable to the paper.</p>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Input provenance</h2>
+    <table>
+      <tr><th>Paper</th><td>{{ bundle.paper_source or "unknown" }}</td></tr>
+      <tr><th>Repository</th><td>{{ bundle.repository_source or "unknown" }}</td></tr>
+      <tr><th>Dataset</th><td>{{ bundle.dataset_source or "unknown" }}</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Paper and code differences</h2>
+    {% if bundle.alignment_findings %}
+    <table><thead><tr><th>Field</th><th>Status</th><th>Severity</th><th>Evidence</th></tr></thead><tbody>
+    {% for finding in bundle.alignment_findings %}
+      <tr><td>{{ finding.field }}</td><td>{{ finding.status.value }}</td><td>{{ finding.severity.value }}</td><td>{{ finding.explanation }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p>unknown</p>{% endif %}
+  </section>
+
+  <section>
+    <h2>Environment and executed commands</h2>
+    <p><strong>Environment evidence:</strong> {{ bundle.environment.evidence|join(", ") if bundle.environment.evidence else "unknown" }}</p>
+    {% if bundle.commands %}
+      {% for command in bundle.commands %}<pre>{{ command|join(" ") }}</pre>{% endfor %}
+    {% else %}<p>unknown</p>{% endif %}
+  </section>
+
+  <section>
+    <h2>Repair timeline</h2>
+    {% if bundle.repair_attempts %}
+      {% for attempt in bundle.repair_attempts %}
+      <article>
+        <h3>Attempt {{ loop.index }}</h3>
+        <p><strong>Diagnosis:</strong> {{ attempt.diagnosis.root_cause if attempt.diagnosis else "unknown" }}</p>
+        <p><strong>Patch rationale:</strong> {{ attempt.patch.explanation if attempt.patch else "unknown" }}</p>
+        <pre>{{ attempt.patch.diff if attempt.patch else "unknown" }}</pre>
+        <p><strong>Approval:</strong> {% if attempt.approval %}{{ "approved" if attempt.approval.approved else "rejected" }}{% else %}unknown{% endif %}</p>
+        <p><strong>Test result:</strong> {% if attempt.test_result %}exit code {{ attempt.test_result.exit_code }} in {{ "%.2f"|format(attempt.test_result.duration_seconds) }} seconds{% else %}unknown{% endif %}</p>
+      </article>
+      {% endfor %}
+    {% else %}<p>unknown</p>{% endif %}
+  </section>
+
+  <section>
+    <h2>Metric comparison</h2>
+    {% if score.metric_comparisons %}
+    <table><thead><tr><th>Metric</th><th>Paper</th><th>Run mean ± std</th><th>Delta</th><th>Comparison</th></tr></thead><tbody>
+    {% for metric in score.metric_comparisons %}
+      <tr><td>{{ metric.name }}</td><td>{{ metric.paper_value }}</td><td>{{ "%.6f ± %.6f"|format(metric.mean, metric.std) }}</td><td>{{ "%+.6f"|format(metric.delta) }}</td><td>{{ "comparable" if metric.comparable else "not comparable" }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p>unknown</p>{% endif %}
+  </section>
+
+  <section>
+    <h2>Score breakdown</h2>
+    <table><thead><tr><th>Dimension</th><th>Status</th><th>Score</th><th>Artifact IDs</th></tr></thead><tbody>
+    {% for dimension in score.dimensions %}
+      <tr><td>{{ dimension.name }}</td><td>{{ dimension.status.value }}</td><td>{{ "%.1f / %d"|format(dimension.earned, dimension.weight) }}</td><td>{{ dimension.evidence|join(", ") if dimension.evidence else "unknown" }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </section>
+
+  <section>
+    <h2>Model usage and cost</h2>
+    {% if bundle.model_usage %}
+    <table><thead><tr><th>Model</th><th>Tokens</th><th>Duration</th><th>Estimated cost</th></tr></thead><tbody>
+    {% for usage in bundle.model_usage %}
+      <tr><td>{{ usage.model }}</td><td>{{ usage.input_tokens + usage.output_tokens }}</td><td>{{ "%.2f seconds"|format(usage.duration_seconds) }}</td><td>{{ "$%.4f"|format(usage.estimated_cost_usd) if usage.estimated_cost_usd is not none else "unknown" }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+    {% else %}<p>unknown</p>{% endif %}
+  </section>
+
+  <section>
+    <h2>Unresolved risks</h2>
+    {% if bundle.unresolved_risks %}<ul>{% for risk in bundle.unresolved_risks %}<li>{{ risk }}</li>{% endfor %}</ul>{% else %}<p>unknown</p>{% endif %}
+  </section>
+</main>
+</body>
+</html>

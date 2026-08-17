@@ -140,6 +140,10 @@ class ReproPilot:
             return self._continue_from_smoke(store, request, smoke, attempts, deadline)
         except TimeoutError:
             return self._terminal(store, RunStatus.TIMED_OUT, attempts, "Run deadline exhausted.")
+        except Exception as exc:
+            return self._terminal(
+                store, RunStatus.FAILED, attempts, f"Internal failure: {exc}"
+            )
 
     def _continue_from_smoke(
         self,

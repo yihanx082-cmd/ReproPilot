@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field, JsonValue, model_validator
 
 
 class DatasetRequest(BaseModel):
@@ -203,3 +203,80 @@ class RunSummary(BaseModel):
     states: list[RunState]
     attempts: int = Field(ge=0)
     reason: str | None = None
+
+
+class EvidenceStatus(StrEnum):
+    VERIFIED = "verified"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+class ReproductionLabel(StrEnum):
+    REPRODUCED = "REPRODUCED"
+    PARTIAL = "PARTIAL"
+    PROVISIONAL_SMOKE_RUN = "PROVISIONAL_SMOKE_RUN"
+    NOT_REPRODUCED = "NOT_REPRODUCED"
+
+
+class DimensionEvidence(BaseModel):
+    status: EvidenceStatus
+    evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_evidence_for_earned_status(self) -> DimensionEvidence:
+        if self.status in {EvidenceStatus.VERIFIED, EvidenceStatus.PARTIAL} and not self.evidence:
+            raise ValueError("verified or partial evidence requires at least one artifact ID")
+        return self
+
+
+class MetricComparison(BaseModel):
+    name: str = Field(min_length=1)
+    paper_value: float
+    run_values: list[float] = Field(min_length=1)
+    delta: float
+    mean: float
+    std: float = Field(ge=0)
+    comparable: bool
+    evidence: list[str] = Field(default_factory=list)
+
+
+class ScoreDimension(BaseModel):
+    name: str = Field(min_length=1)
+    weight: int = Field(gt=0)
+    earned: float = Field(ge=0)
+    status: EvidenceStatus
+    evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_earned_score(self) -> ScoreDimension:
+        if self.earned > self.weight:
+            raise ValueError("earned score cannot exceed dimension weight")
+        if self.earned > 0 and not self.evidence:
+            raise ValueError("earned score requires at least one artifact ID")
+        return self
+
+
+class EvidenceBundle(BaseModel):
+    environment: DimensionEvidence
+    data: DimensionEvidence
+    configuration: DimensionEvidence
+    metrics: DimensionEvidence
+    random_seeds: DimensionEvidence
+    result_proximity: DimensionEvidence
+    external_dependencies: DimensionEvidence
+    metric_comparisons: list[MetricComparison] = Field(default_factory=list)
+    execution_succeeded: bool = True
+    evidence_complete: bool = True
+    dataset_subset: bool = False
+    epoch_count_differs: bool = False
+    model_differs: bool = False
+
+
+class ReproScore(BaseModel):
+    total: float = Field(ge=0, le=100)
+    label: ReproductionLabel
+    dimensions: list[ScoreDimension]
+    metric_comparisons: list[MetricComparison]
+    comparable: bool
+    reasons: list[str] = Field(default_factory=list)

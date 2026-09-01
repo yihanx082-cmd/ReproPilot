@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol, TypeVar
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
+from openai.types.shared_params import ResponseFormatJSONObject
 from pydantic import BaseModel, Field
 
 from repropilot.alignment import align_claims
@@ -26,6 +33,7 @@ from repropilot.domain import (
     EvidenceEvent,
     EvidenceStatus,
     ModelUsage,
+    PaperResult,
     PaperSpec,
     PatchProposal,
     RepairAttempt,
@@ -78,10 +86,29 @@ class PatchDraft(BaseModel):
     allowed_paths: list[str] = Field(min_length=1)
 
 
+class PatchEdit(BaseModel):
+    path: str = Field(min_length=1)
+    search: str = Field(min_length=1)
+    replacement: str
+
+
+class PatchEditDraft(BaseModel):
+    edits: list[PatchEdit] = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+    targeted_test: list[str] = Field(min_length=1)
+
+
 class OpenAICompatiblePatchGenerator:
-    def __init__(self, client: OpenAI, model: str) -> None:
+    def __init__(
+        self,
+        client: OpenAI,
+        model: str,
+        *,
+        structured_output_mode: str = "json_schema",
+    ) -> None:
         self.client = client
         self.model = model
+        self.structured_output_mode = structured_output_mode
 
     def propose(
         self, diagnosis: Diagnosis, worktree: Path, log_tail: str
@@ -96,30 +123,202 @@ class OpenAICompatiblePatchGenerator:
             "log_tail": log_tail[-12000:],
             "files": files,
         }
-        completion = self.client.chat.completions.parse(
-            model=self.model,
-            messages=[
+        patch_instruction = (
+            "Generate minimal exact search-and-replace edits for the diagnosed failure. "
+            "Each search string must match exactly once in the supplied file and include "
+            "enough unchanged context to be unique. Fix all occurrences needed to resolve "
+            "the same root cause. targeted_test must contain one command argument per JSON "
+            "array element, for example [\"python\", \"trainer.py\", \"--help\"]. "
+            if self.structured_output_mode == "json_object"
+            else (
+                "Generate one minimal, complete unified Git diff for the diagnosed "
+                "failure. The diff must begin with 'diff --git a/... b/...', contain "
+                "exact hunk counts, and contain no Markdown fences. "
+            )
+        )
+        if diagnosis.category.value == "cuda_runtime":
+            patch_instruction += (
+                "A CUDA-to-CPU repair is incomplete unless it updates every unconditional "
+                "device transfer, adds torch.load map_location when checkpoint loading is "
+                "present, and safely handles optional checkpoint metadata such as epoch "
+                "when loading pretrained weights. Include all applicable changes now. "
+            )
+        messages: list[ChatCompletionMessageParam] = [
+            {
+                "role": "system",
+                "content": (
+                    patch_instruction
+                    + "Touch only diagnosis.related_files, include one explicit argv test, "
+                    "and do not add downloads, shell commands, or unrelated refactors."
+                ),
+            },
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
+        if self.structured_output_mode == "json_object":
+            messages.append(
                 {
                     "role": "system",
                     "content": (
-                        "Generate one minimal unified Git diff for the diagnosed failure. "
-                        "Touch only diagnosis.related_files, include one explicit argv test, "
-                        "and do not add downloads, shell commands, or unrelated refactors."
+                        "Return valid JSON matching this JSON schema: "
+                        + json.dumps(PatchEditDraft.model_json_schema())
                     ),
-                },
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
-            response_format=PatchDraft,
-        )
-        draft = completion.choices[0].message.parsed
-        if draft is None:
-            raise RuntimeError("Patch model returned no structured patch")
+                }
+            )
+            return self._propose_from_edits(messages, files, worktree, diagnosis)
+
+        draft: PatchDraft | None = None
+        validation_error = ""
+        for attempt in range(2):
+            draft = self._request_draft(messages)
+            validation_error = self._git_apply_error(draft.diff, worktree)
+            if not validation_error:
+                break
+            if attempt == 0:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The diff failed git apply --check. Return corrected JSON with "
+                            "a complete unified Git diff beginning with "
+                            "'diff --git a/... b/...', no Markdown fences, and exact hunk "
+                            f"counts. Error: {validation_error[:2000]}"
+                        ),
+                    }
+                )
+        if draft is None or validation_error:
+            raise RuntimeError(
+                "Patch failed git apply --check after one correction: "
+                + validation_error
+            )
         provisional = PatchProposal(
             **draft.model_dump(),
             risk=RiskLevel.HIGH,
         )
         decision = assess_patch(provisional.diff, diagnosis)
         return provisional.model_copy(update={"risk": decision.level})
+
+    def _propose_from_edits(
+        self,
+        messages: list[ChatCompletionMessageParam],
+        files: dict[str, str],
+        worktree: Path,
+        diagnosis: Diagnosis,
+    ) -> PatchProposal:
+        error = ""
+        draft: PatchDraft | None = None
+        for attempt in range(2):
+            edit_draft = self._request_edit_draft(messages)
+            try:
+                draft = self._render_edit_draft(edit_draft, files)
+                error = self._git_apply_error(draft.diff, worktree)
+                if not error:
+                    break
+            except RuntimeError as exc:
+                error = str(exc)
+            if attempt == 0:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The edits could not be applied exactly. Return corrected JSON "
+                            "using exact, unique text copied from the supplied files. "
+                            f"Error: {error[:2000]}"
+                        ),
+                    }
+                )
+        if draft is None or error:
+            raise RuntimeError("Patch edits remained invalid after one correction: " + error)
+        provisional = PatchProposal(**draft.model_dump(), risk=RiskLevel.HIGH)
+        decision = assess_patch(provisional.diff, diagnosis)
+        return provisional.model_copy(update={"risk": decision.level})
+
+    def _request_edit_draft(
+        self, messages: list[ChatCompletionMessageParam]
+    ) -> PatchEditDraft:
+        response_format: ResponseFormatJSONObject = {"type": "json_object"}
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            response_format=response_format,
+            extra_body={"thinking": {"type": "disabled"}},
+            max_tokens=4096,
+        )
+        content = completion.choices[0].message.content
+        if not content:
+            raise RuntimeError("Patch model returned no structured edits")
+        return PatchEditDraft.model_validate_json(content)
+
+    @staticmethod
+    def _render_edit_draft(
+        draft: PatchEditDraft, files: dict[str, str]
+    ) -> PatchDraft:
+        updated = dict(files)
+        changed_paths: list[str] = []
+        for edit in draft.edits:
+            if edit.path not in updated:
+                raise RuntimeError(f"Edit path is not an allowed related file: {edit.path}")
+            matches = updated[edit.path].count(edit.search)
+            if matches != 1:
+                raise RuntimeError(
+                    f"Search text in {edit.path} matched {matches} times instead of once"
+                )
+            updated[edit.path] = updated[edit.path].replace(
+                edit.search, edit.replacement, 1
+            )
+            if edit.path not in changed_paths:
+                changed_paths.append(edit.path)
+
+        chunks: list[str] = []
+        for path in changed_paths:
+            if updated[path] == files[path]:
+                continue
+            body = "".join(
+                difflib.unified_diff(
+                    files[path].splitlines(keepends=True),
+                    updated[path].splitlines(keepends=True),
+                    fromfile=f"a/{path}",
+                    tofile=f"b/{path}",
+                )
+            )
+            chunks.append(f"diff --git a/{path} b/{path}\n{body}")
+        if not chunks:
+            raise RuntimeError("Edits produced no file changes")
+        targeted_test = draft.targeted_test
+        if len(targeted_test) == 1:
+            targeted_test = shlex.split(targeted_test[0])
+        return PatchDraft(
+            diff="".join(chunks),
+            explanation=draft.explanation,
+            targeted_test=targeted_test,
+            allowed_paths=changed_paths,
+        )
+
+    def _request_draft(
+        self, messages: list[ChatCompletionMessageParam]
+    ) -> PatchDraft:
+        completion = self.client.chat.completions.parse(
+            model=self.model,
+            messages=messages,
+            response_format=PatchDraft,
+        )
+        draft = completion.choices[0].message.parsed
+        if draft is None:
+            raise RuntimeError("Patch model returned no structured patch")
+        return draft
+
+    @staticmethod
+    def _git_apply_error(diff: str, worktree: Path) -> str:
+        if not diff.startswith("diff --git a/"):
+            return "diff does not start with a complete 'diff --git' header"
+        completed = subprocess.run(
+            ["git", "apply", "--check", "--whitespace=nowarn", "-"],
+            cwd=worktree,
+            input=diff,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return completed.stderr.strip() if completed.returncode else ""
 
 
 class DefaultRunServices:
@@ -194,6 +393,9 @@ class DefaultRunServices:
         store.write_json_artifact(
             f"diagnosis-{attempt}.json", diagnosis.model_dump(mode="json")
         )
+        store.write_json_artifact(
+            f"failure-{attempt}.json", failed.model_dump(mode="json")
+        )
         store.append_event(
             EvidenceEvent(
                 kind=EventKind.DIAGNOSIS,
@@ -204,12 +406,34 @@ class DefaultRunServices:
         return diagnosis
 
     def propose_patch(self, diagnosis: Diagnosis, store: ArtifactStore) -> PatchProposal:
-        failed = self._latest_command(store, "smoke-")
-        log_tail = self._command_log(failed)
-        proposal = self.patch_generator.propose(diagnosis, self._worktree(store), log_tail)
-        decision = assess_patch(proposal.diff, diagnosis)
-        proposal = proposal.model_copy(update={"risk": decision.level})
         attempt = int(store.read_metadata().get("attempts", 0)) + 1
+        failed = CommandResult.model_validate(
+            store.read_metadata_from(f"failure-{attempt}.json")
+        )
+        log_tail = self._command_log(failed)
+        worktree = self._worktree(store)
+        prior_diffs: list[str] = []
+        if attempt > 1:
+            prior_diffs = [
+                PatchProposal.model_validate(
+                    store.read_metadata_from(f"patch-{attempt - 1}.json")
+                ).diff
+            ]
+            with self._temporary_patched_worktree(worktree, prior_diffs) as patched:
+                proposal = self.patch_generator.propose(diagnosis, patched, log_tail)
+        else:
+            proposal = self.patch_generator.propose(diagnosis, worktree, log_tail)
+        proposal = proposal.model_copy(update={"targeted_test": failed.argv})
+        if prior_diffs:
+            cumulative = self._combine_diffs(worktree, [*prior_diffs, proposal.diff])
+            proposal = proposal.model_copy(update={"diff": cumulative})
+        decision = assess_patch(proposal.diff, diagnosis)
+        proposal = proposal.model_copy(
+            update={
+                "allowed_paths": decision.changed_files,
+                "risk": decision.level,
+            }
+        )
         store.write_json_artifact(
             f"patch-{attempt}.json", proposal.model_dump(mode="json")
         )
@@ -270,17 +494,15 @@ class DefaultRunServices:
             raise RuntimeError("Patch rollback did not restore the exact workspace")
 
     def compare(self, run_request: RunRequest, store: ArtifactStore) -> None:
-        del run_request
         spec = PaperSpec.model_validate(store.read_metadata_from("paper_spec.json"))
         successful = self._latest_successful_smoke(store)
         text = successful.stdout_path.read_text(encoding="utf-8", errors="replace")
-        observed = {
-            self._metric_key(match.group(1)): float(match.group(2))
-            for match in re.finditer(r"([A-Za-z][\w-]*)\s*[=:]\s*([0-9]*\.?[0-9]+)", text)
-        }
+        observed = self._parse_observed_metrics(text)
         comparisons = []
         artifact = successful.stdout_path.name
-        for result in spec.reported_results:
+        for result in self._results_for_command(
+            spec.reported_results, run_request.command
+        ):
             key = self._metric_key(result.metric)
             if key in observed:
                 comparisons.append(
@@ -549,6 +771,64 @@ class DefaultRunServices:
             raise RuntimeError(f"No {prefix} command artifact exists")
         return CommandResult.model_validate_json(paths[-1].read_text(encoding="utf-8"))
 
+    @staticmethod
+    def _combine_diffs(worktree: Path, diffs: list[str]) -> str:
+        with DefaultRunServices._temporary_patched_worktree(worktree, diffs) as patched:
+            combined = subprocess.run(
+                ["git", "diff", "--binary", "--no-color"],
+                cwd=patched,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if combined.returncode != 0 or not combined.stdout:
+                raise RuntimeError(
+                    "Cannot render cumulative patch: " + combined.stderr.strip()
+                )
+            return combined.stdout
+
+    @staticmethod
+    @contextmanager
+    def _temporary_patched_worktree(
+        worktree: Path, diffs: list[str]
+    ) -> Iterator[Path]:
+        with tempfile.TemporaryDirectory(prefix="repropilot-combine-") as temp_dir:
+            temporary_worktree = Path(temp_dir) / "worktree"
+            created = subprocess.run(
+                ["git", "worktree", "add", "--detach", str(temporary_worktree), "HEAD"],
+                cwd=worktree,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if created.returncode != 0:
+                raise RuntimeError(
+                    "Cannot create temporary Git worktree: " + created.stderr.strip()
+                )
+            try:
+                for diff in diffs:
+                    applied = subprocess.run(
+                        ["git", "apply", "--whitespace=nowarn", "-"],
+                        cwd=temporary_worktree,
+                        input=diff,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if applied.returncode != 0:
+                        raise RuntimeError(
+                            "Cannot combine repair patches: " + applied.stderr.strip()
+                        )
+                yield temporary_worktree
+            finally:
+                subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(temporary_worktree)],
+                    cwd=worktree,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
     def _latest_successful_smoke(self, store: ArtifactStore) -> CommandResult:
         results = [
             CommandResult.model_validate_json(path.read_text(encoding="utf-8"))
@@ -562,6 +842,55 @@ class DefaultRunServices:
     @staticmethod
     def _metric_key(value: str) -> str:
         return re.sub(r"[^a-z0-9]", "", value.casefold())
+
+    @classmethod
+    def _parse_observed_metrics(cls, text: str) -> dict[str, float]:
+        observed = {
+            cls._metric_key(match.group(1)): float(match.group(2))
+            for match in re.finditer(
+                r"([A-Za-z][\w-]*)\s*[=:]\s*([0-9]*\.?[0-9]+)", text
+            )
+        }
+        for match in re.finditer(
+            r"\b(Prec@1|Acc@1|Top-1 accuracy)\s*[=:]?\s*([0-9]*\.?[0-9]+)",
+            text,
+            flags=re.IGNORECASE,
+        ):
+            observed[cls._metric_key(match.group(1))] = float(match.group(2))
+        return cls._derived_metrics(observed)
+
+    @staticmethod
+    def _derived_metrics(observed: dict[str, float]) -> dict[str, float]:
+        derived = dict(observed)
+        for accuracy_key in ("prec1", "acc1", "top1accuracy"):
+            if accuracy_key in observed:
+                derived.setdefault("error", 100.0 - observed[accuracy_key])
+                break
+        return derived
+
+    @classmethod
+    def _results_for_command(
+        cls, results: list[PaperResult], argv: list[str]
+    ) -> list[PaperResult]:
+        architecture = ""
+        if "--arch" in argv:
+            index = argv.index("--arch")
+            if index + 1 < len(argv):
+                architecture = cls._metric_key(argv[index + 1])
+
+        counts: dict[str, int] = {}
+        for result in results:
+            key = cls._metric_key(result.metric)
+            counts[key] = counts.get(key, 0) + 1
+        return [
+            result
+            for result in results
+            if counts[cls._metric_key(result.metric)] == 1
+            or (
+                architecture
+                and architecture in cls._metric_key(result.evidence_text)
+            )
+        ]
 
     @staticmethod
     def _read_models(

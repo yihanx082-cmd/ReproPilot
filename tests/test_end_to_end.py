@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pymupdf
+import pytest
 
 from repropilot.domain import (
     CommandResult,
@@ -73,7 +74,7 @@ class FakePatchGenerator:
 """,
             explanation="Remove the injected unavailable fixture dependency.",
             risk=RiskLevel.LOW,
-            targeted_test=["python", "train.py"],
+            targeted_test=["python", "unbounded_model_selected_test.py"],
             allowed_paths=["train.py"],
         )
 
@@ -175,6 +176,11 @@ def test_missing_dependency_runs_from_pdf_through_patch_and_html_report(tmp_path
     evidence = json.loads(
         (summary.run_dir / "evidence_bundle.json").read_text(encoding="utf-8")
     )
+    verification = json.loads(
+        (summary.run_dir / "verify-1.json").read_text(encoding="utf-8")
+    )
+    assert verification["argv"][-1] == "train.py"
+    assert "unbounded_model_selected_test.py" not in verification["argv"]
     assert evidence["execution_succeeded"] is True
     assert not (summary.run_dir / "worktree" / "train.py").read_text(
         encoding="utf-8"
@@ -183,3 +189,33 @@ def test_missing_dependency_runs_from_pdf_through_patch_and_html_report(tmp_path
     assert "PROVISIONAL_SMOKE_RUN" in report
     assert "Remove the injected unavailable fixture dependency" in report
     assert "macro_f1" in report
+
+
+def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:
+    results = [
+        PaperResult(
+            metric="Error",
+            value=8.75,
+            unit="%",
+            evidence_text="ResNet 20 0.27M 8.75",
+            page=7,
+            confidence=0.98,
+        ),
+        PaperResult(
+            metric="Error",
+            value=7.51,
+            unit="%",
+            evidence_text="ResNet 32 0.46M 7.51",
+            page=7,
+            confidence=0.98,
+        ),
+    ]
+
+    selected = DefaultRunServices._results_for_command(
+        results,
+        ["python", "trainer.py", "--arch", "resnet20"],
+    )
+    observed = DefaultRunServices._parse_observed_metrics(" * Prec@1 91.730\n")
+
+    assert selected == [results[0]]
+    assert observed["error"] == pytest.approx(8.27)

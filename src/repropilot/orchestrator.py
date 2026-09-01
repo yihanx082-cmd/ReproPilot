@@ -193,6 +193,7 @@ class ReproPilot:
                     return self._terminal(
                         store, RunStatus.TIMED_OUT, attempts, "Patch verification timed out."
                     )
+                smoke = verified
                 continue
 
             self._transition(store, RunState.SMOKE_RUN, attempts=attempts)

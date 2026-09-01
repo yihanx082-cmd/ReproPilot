@@ -143,9 +143,22 @@ def _default_services() -> DefaultRunServices:
         )
     base_url = os.environ.get("OPENAI_BASE_URL") or None
     client = OpenAI(api_key=api_key, base_url=base_url)
+    structured_output_mode = (
+        "json_object"
+        if base_url and base_url.rstrip("/") == "https://api.deepseek.com"
+        else "json_schema"
+    )
     return DefaultRunServices(
-        paper_llm=OpenAICompatiblePaperLLM(client, model),
-        patch_generator=OpenAICompatiblePatchGenerator(client, model),
+        paper_llm=OpenAICompatiblePaperLLM(
+            client,
+            model,
+            structured_output_mode=structured_output_mode,
+        ),
+        patch_generator=OpenAICompatiblePatchGenerator(
+            client,
+            model,
+            structured_output_mode=structured_output_mode,
+        ),
     )
 
 

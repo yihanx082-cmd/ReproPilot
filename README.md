@@ -52,6 +52,16 @@ $env:OPENAI_MODEL="支持结构化输出的模型名"
 $env:OPENAI_BASE_URL="https://你的兼容服务/v1"  # 官方 OpenAI 可省略
 ```
 
+DeepSeek 示例（JSON 模式由 ReproPilot 自动适配）：
+
+```powershell
+$env:OPENAI_API_KEY="你的 DeepSeek API Key"
+$env:OPENAI_MODEL="deepseek-v4-pro"
+$env:OPENAI_BASE_URL="https://api.deepseek.com"
+```
+
+API Key 只应保存在本机环境变量中，不要写入 YAML、源码、日志或提交到 GitHub。
+
 可先只验证配置，不调用模型、不运行代码：
 
 ```powershell

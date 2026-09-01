@@ -44,7 +44,14 @@ class DockerSandbox:
         dockerfile = context / "Dockerfile"
         dockerfile_sha256 = hashlib.sha256(dockerfile.read_bytes()).hexdigest()
         self.image_tag = image_tag
-        argv = [self.docker_executable, "build", "--tag", image_tag, str(context)]
+        argv = [
+            self.docker_executable,
+            "build",
+            "--load",
+            "--tag",
+            image_tag,
+            str(context),
+        ]
         result = self._execute(argv, timeout=timeout, label="build")
         digest = None
         if result.exit_code == 0:

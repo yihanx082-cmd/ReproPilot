@@ -59,6 +59,7 @@ class FakeServices:
         self.rollback_calls = 0
         self.command_timeouts: list[float] = []
         self.report_statuses: list[str] = []
+        self.diagnosed_failures: list[str] = []
 
     def ingest(self, run_request: RunRequest, store: Any) -> None:
         pass
@@ -79,6 +80,7 @@ class FakeServices:
         return self._result("smoke", exit_code, timed_out=timed_out)
 
     def diagnose(self, failed: CommandResult, store: Any) -> Diagnosis:
+        self.diagnosed_failures.append(failed.stderr_path.name)
         return Diagnosis(
             category="dependency",
             root_cause="Missing fixture dependency.",
@@ -202,6 +204,22 @@ def test_stops_after_exactly_three_patch_attempts_and_reports(tmp_path: Path):
     assert services.proposal_calls == 3
     assert summary.states[-1] == "REPORT"
     assert services.report_statuses == [RunStatus.FAILED]
+
+
+def test_failed_patch_verification_becomes_the_next_diagnostic_input(tmp_path: Path):
+    _, ReproPilot, RunStatus = _orchestrator_contracts()
+    services = FakeServices(
+        tmp_path,
+        smoke_exit_codes=[1, 0],
+        verify_exit_codes=[1, 0],
+    )
+
+    summary = ReproPilot(tmp_path / "runs", services).run(request(tmp_path))
+
+    assert summary.status == RunStatus.SUCCEEDED
+    assert summary.attempts == 2
+    assert services.diagnosed_failures[0].startswith("smoke-")
+    assert services.diagnosed_failures[1].startswith("verify-")
 
 
 def test_timeout_still_generates_a_terminal_report(tmp_path: Path):

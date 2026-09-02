@@ -1,0 +1,17 @@
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -83,11 +83,11 @@ test_transform = transforms.Compose([
+ ])
+ 
+-trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
++trainset = torchvision.datasets.CIFAR10(root='./missing-data', train=True,
+                                         download=True, transform=train_transform)
+ trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size,
+                                           shuffle=True, num_workers=args.workers)
+ 
+-testset = torchvision.datasets.CIFAR10(root='./data', train=False,
++testset = torchvision.datasets.CIFAR10(root='./missing-data', train=False,
+                                        download=True, transform=test_transform)
+ testloader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size,
+                                          shuffle=False, num_workers=args.workers)

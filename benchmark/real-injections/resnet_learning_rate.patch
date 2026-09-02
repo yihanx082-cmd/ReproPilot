@@ -1,0 +1,10 @@
+diff --git a/trainer.py b/trainer.py
+--- a/trainer.py
++++ b/trainer.py
+@@ -30,7 +30,7 @@ parser.add_argument('-b', '--batch-size', default=128, type=int,
+                     metavar='N', help='mini-batch size (default: 128)')
+-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
++parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
+                     metavar='LR', help='initial learning rate')
+ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+                     help='momentum')

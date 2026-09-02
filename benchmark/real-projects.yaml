@@ -1,0 +1,84 @@
+cases:
+  - id: convmixer-missing-dependency
+    repository_url: https://github.com/locuslab/convmixer-cifar10.git
+    commit_sha: 2d3d9b73d3caa6112ecdcea866f1d2805f37cc8e
+    license: MIT
+    injection: benchmark/real-injections/convmixer_missing_dependency.patch
+    expected_category: dependency
+    expected_root_cause: An undeclared Python dependency was imported by train.py.
+    allowed_paths: [train.py]
+    expected_outcome: auto_fix
+    probe:
+      path: train.py
+      forbidden_text: import repropilot_missing_dependency
+      failure_message: "ModuleNotFoundError in train.py: No module named 'repropilot_missing_dependency'"
+
+  - id: convmixer-incorrect-dataset-path
+    repository_url: https://github.com/locuslab/convmixer-cifar10.git
+    commit_sha: 2d3d9b73d3caa6112ecdcea866f1d2805f37cc8e
+    license: MIT
+    injection: benchmark/real-injections/convmixer_incorrect_dataset_path.patch
+    expected_category: path
+    expected_root_cause: The CIFAR-10 loaders point to a missing dataset directory.
+    allowed_paths: [train.py]
+    expected_outcome: auto_fix
+    probe:
+      path: train.py
+      forbidden_text: "root='./missing-data'"
+      failure_message: "FileNotFoundError in train.py: CIFAR-10 root './missing-data' does not exist; expected './data'"
+
+  - id: resnet-learning-rate-mismatch
+    repository_url: https://github.com/akamaster/pytorch_resnet_cifar10.git
+    commit_sha: d5489e8995e81e91ce6b1d69dcc98ad579b0b153
+    license: BSD-2-Clause
+    injection: benchmark/real-injections/resnet_learning_rate.patch
+    expected_category: configuration
+    expected_root_cause: The default learning rate differs from the documented 0.1 experiment.
+    allowed_paths: [trainer.py]
+    expected_outcome: auto_fix
+    probe:
+      path: trainer.py
+      required_text: "default=0.1, type=float"
+      failure_message: "CONFIGURATION ERROR in trainer.py: documented learning_rate=0.1, observed default=0.001"
+
+  - id: resnet-top1-metric-mismatch
+    repository_url: https://github.com/akamaster/pytorch_resnet_cifar10.git
+    commit_sha: d5489e8995e81e91ce6b1d69dcc98ad579b0b153
+    license: BSD-2-Clause
+    injection: benchmark/real-injections/resnet_top1_metric.patch
+    expected_category: metric
+    expected_root_cause: Prec@1 is computed with top-k equal to five.
+    allowed_paths: [trainer.py]
+    expected_outcome: approval
+    probe:
+      path: trainer.py
+      required_text: "def accuracy(output, target, topk=(1,)):"
+      failure_message: "METRIC ERROR in trainer.py: Prec@1 uses topk=(5,) instead of topk=(1,)"
+
+  - id: lightning-cuda-fallback
+    repository_url: https://github.com/karasawatakumi/pytorch-image-classification.git
+    commit_sha: 4dd18700e9c2eb1787e652326d188e8ecdbac2aa
+    license: MIT
+    injection: benchmark/real-injections/lightning_cuda_fallback.patch
+    expected_category: cuda_runtime
+    expected_root_cause: CPU hosts are incorrectly assigned the GPU accelerator.
+    allowed_paths: [train.py]
+    expected_outcome: auto_fix
+    probe:
+      path: train.py
+      required_text: 'return "cpu", None, None'
+      failure_message: "CUDA ERROR in train.py: CPU-only runner selects accelerator='gpu'"
+
+  - id: lightning-validation-shuffle
+    repository_url: https://github.com/karasawatakumi/pytorch-image-classification.git
+    commit_sha: 4dd18700e9c2eb1787e652326d188e8ecdbac2aa
+    license: MIT
+    injection: benchmark/real-injections/lightning_validation_shuffle.patch
+    expected_category: data
+    expected_root_cause: Validation samples are shuffled instead of using deterministic order.
+    allowed_paths: [train.py]
+    expected_outcome: approval
+    probe:
+      path: train.py
+      required_text: "shuffle=False,\n            drop_last=False"
+      failure_message: "DATASET ERROR in train.py: validation DataLoader uses shuffle=True; expected deterministic shuffle=False"

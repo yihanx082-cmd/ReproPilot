@@ -176,7 +176,10 @@ def test_deepseek_recovers_claims_after_a_result_only_response() -> None:
     )
 
     extraction = llm.extract(
-        [PaperPage(page=1, text="Experiments use CIFAR-10."), PaperPage(page=7, text="ResNet 20 0.27M 8.75")]
+        [
+            PaperPage(page=1, text="Experiments use CIFAR-10."),
+            PaperPage(page=7, text="ResNet 20 0.27M 8.75"),
+        ]
     )
 
     assert completions.call_count == 2

@@ -19,7 +19,8 @@ command:
 formal_experiment:
   command:
     - python
-    - trainer.py
+    - -c
+    - import random, numpy, torch; seed={seed}; random.seed(seed); numpy.random.seed(seed); torch.manual_seed(seed); exec(compile(open("trainer.py", encoding="utf-8").read(), "trainer.py", "exec"))
     - --arch
     - resnet20
     - --workers
@@ -29,8 +30,6 @@ formal_experiment:
     - --evaluate
     - --resume
     - pretrained_models/resnet20-12fca82f.th
-    - --manualSeed
-    - "{seed}"
   seeds: [11, 22, 33]
   comparison_scope: paper
   scope_evidence:

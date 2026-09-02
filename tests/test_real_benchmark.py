@@ -81,6 +81,14 @@ class FixedPatchGenerator:
         return self.proposal
 
 
+class FailingPatchGenerator:
+    def __init__(self) -> None:
+        self.usage: list[ModelUsage] = []
+
+    def propose(self, *_args: object) -> PatchProposal:
+        raise RuntimeError("model endpoint unavailable")
+
+
 def _repair_proposal(*, replacement: str = "LEARNING_RATE = 0.1") -> PatchProposal:
     return PatchProposal(
         diff=(
@@ -377,6 +385,19 @@ def test_agent_case_rolls_back_failed_patch_before_next_attempt(tmp_path: Path) 
     assert result.post_fix_tests_passed is False
     assert result.patch_attempts == 1
     assert "LEARNING_RATE = 0.001" in (workspace / "train.py").read_text(encoding="utf-8")
+
+
+def test_agent_case_records_model_failure_without_aborting_benchmark(
+    tmp_path: Path,
+) -> None:
+    case, workspace = _injected_workspace(tmp_path)
+
+    result = run_agent_case(case, workspace, FailingPatchGenerator(), max_attempts=2)
+
+    assert result.status == "model_failed"
+    assert result.patch_attempts == 2
+    assert result.repair_succeeded is False
+    assert result.failure_reason == "model endpoint unavailable"
 
 
 def _successful_real_result(case_id: str = "success") -> RealCaseResult:

@@ -12,6 +12,7 @@ from types import TracebackType
 from typing import Literal, Protocol
 
 import yaml
+from openai import OpenAIError
 from pydantic import BaseModel, Field, model_validator
 
 from repropilot.benchmark import changed_lines_from_diff
@@ -324,7 +325,7 @@ def run_agent_case(
 
     def result(
         *,
-        status: Literal["completed", "approval_required"],
+        status: Literal["completed", "approval_required", "model_failed"],
         repaired: bool,
         verified: bool,
         changed_lines: dict[str, set[int]] | None = None,
@@ -415,11 +416,11 @@ def run_agent_case(
             transaction.rollback()
             tool_calls += 1
             last_failure = post_fix.output
-        except (PatchApplyError, RuntimeError, ValueError) as exc:
+        except (OpenAIError, PatchApplyError, RuntimeError, ValueError) as exc:
             last_failure = str(exc)
 
     return result(
-        status="completed",
+        status="model_failed" if last_diff is None else "completed",
         repaired=False,
         verified=False,
         changed_lines=changed_lines_from_diff(last_diff) if last_diff else {},

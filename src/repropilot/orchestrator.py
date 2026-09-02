@@ -35,6 +35,10 @@ class RunServices(Protocol):
         self, run_request: RunRequest, store: ArtifactStore, timeout: float
     ) -> CommandResult: ...
 
+    def formal_experiment(
+        self, run_request: RunRequest, store: ArtifactStore, timeout: float
+    ) -> list[CommandResult]: ...
+
     def diagnose(self, failed: CommandResult, store: ArtifactStore) -> Diagnosis: ...
 
     def propose_patch(self, diagnosis: Diagnosis, store: ArtifactStore) -> PatchProposal: ...
@@ -159,6 +163,28 @@ class ReproPilot:
                     store, RunStatus.TIMED_OUT, attempts, "Smoke run exceeded the deadline."
                 )
             if smoke.exit_code == 0:
+                if request.formal_experiment is not None:
+                    self._transition(store, RunState.FORMAL_EXPERIMENT, attempts=attempts)
+                    formal_results = self.services.formal_experiment(
+                        request, store, self._remaining(deadline)
+                    )
+                    for seed, result in zip(
+                        request.formal_experiment.seeds, formal_results, strict=True
+                    ):
+                        if result.timed_out:
+                            return self._terminal(
+                                store,
+                                RunStatus.TIMED_OUT,
+                                attempts,
+                                f"Formal experiment timed out for seed {seed}.",
+                            )
+                        if result.exit_code != 0:
+                            return self._terminal(
+                                store,
+                                RunStatus.FAILED,
+                                attempts,
+                                f"Formal experiment failed for seed {seed}.",
+                            )
                 self._transition(store, RunState.COMPARE, attempts=attempts)
                 self.services.compare(request, store)
                 self._transition(store, RunState.SCORE, attempts=attempts)

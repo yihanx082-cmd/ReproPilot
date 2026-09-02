@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -383,6 +384,47 @@ class DefaultRunServices:
         attempt = int(store.read_metadata().get("attempts", 0))
         self._record_command(store, f"smoke-{attempt}.json", "smoke_run", result)
         return result
+
+    def formal_experiment(
+        self, run_request: RunRequest, store: ArtifactStore, timeout: float
+    ) -> list[CommandResult]:
+        experiment = run_request.formal_experiment
+        if experiment is None:
+            return []
+
+        deadline = time.monotonic() + timeout
+        results: list[CommandResult] = []
+        manifest_results: list[dict[str, object]] = []
+        for seed in experiment.seeds:
+            command = [token.replace("{seed}", str(seed)) for token in experiment.command]
+            result = self._sandbox(store, run_request).run(
+                command, max(0.001, deadline - time.monotonic())
+            )
+            artifact = f"formal-seed-{seed}.json"
+            self._record_command(store, artifact, "formal_experiment", result)
+            results.append(result)
+            manifest_results.append(
+                {
+                    "seed": seed,
+                    "artifact": artifact,
+                    "argv": result.argv,
+                    "exit_code": result.exit_code,
+                    "timed_out": result.timed_out,
+                    "duration_seconds": result.duration_seconds,
+                    "image_digest": result.image_digest,
+                    "dockerfile_sha256": result.dockerfile_sha256,
+                }
+            )
+        store.write_json_artifact(
+            "experiment_manifest.json",
+            {
+                "seeds": experiment.seeds,
+                "comparison_scope": experiment.comparison_scope,
+                "scope_evidence": experiment.scope_evidence,
+                "results": manifest_results,
+            },
+        )
+        return results
 
     def diagnose(self, failed: CommandResult, store: ArtifactStore) -> Diagnosis:
         log_tail = self._command_log(failed)

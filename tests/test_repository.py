@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from repropilot.artifacts import ArtifactStore
+from repropilot.domain import RunRequest
 
 
 def _scan_repository():
@@ -81,3 +82,52 @@ def test_persists_repository_facts_deterministically(
 
     assert first == second
     assert (store.run_dir / "repo_facts.json").read_text(encoding="utf-8") == first_content
+
+
+def test_extracts_canonical_facts_from_the_executed_request(tmp_path: Path) -> None:
+    try:
+        from repropilot.repository import execution_request_facts
+    except ImportError as exc:
+        pytest.fail(f"Execution request fact extraction is not implemented: {exc}")
+    request = RunRequest.model_validate(
+        {
+            "paper": str(tmp_path / "paper.pdf"),
+            "repository": str(tmp_path / "source"),
+            "dataset": {"name": "CIFAR-10", "path": str(tmp_path / "data")},
+            "command": [
+                "python",
+                "trainer.py",
+                "--arch",
+                "resnet20",
+                "--epochs",
+                "200",
+                "--batch-size",
+                "128",
+                "--lr",
+                "0.1",
+                "--momentum",
+                "0.9",
+                "--weight-decay",
+                "0.0001",
+            ],
+            "formal_experiment": {
+                "command": ["python", "trainer.py", "--seed", "{seed}"],
+                "seeds": [11, 22, 33],
+            },
+        }
+    )
+
+    facts = execution_request_facts(request)
+    by_field = {fact.field: fact for fact in facts}
+
+    assert by_field["dataset.name"].value == "CIFAR-10"
+    assert by_field["model.architecture"].value == "resnet20"
+    assert by_field["training.epochs"].value == 200
+    assert by_field["training.batch_size"].value == 128
+    assert by_field["optimizer.learning_rate"].value == pytest.approx(0.1)
+    assert by_field["optimizer.momentum"].value == pytest.approx(0.9)
+    assert by_field["optimizer.weight_decay"].value == pytest.approx(0.0001)
+    assert by_field["training.seed"].value == [11, 22, 33]
+    assert all(fact.source_path.startswith("run-request") for fact in facts)
+    assert all(fact.extractor == "run_request" for fact in facts)
+    assert all(fact.line_start >= 1 for fact in facts)

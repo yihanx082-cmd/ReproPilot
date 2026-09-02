@@ -135,7 +135,7 @@ class PaperExtraction(BaseModel):
     usage: ModelUsage
 
 
-RepoExtractor = Literal["yaml", "json", "toml", "python_ast", "readme"]
+RepoExtractor = Literal["yaml", "json", "toml", "python_ast", "readme", "run_request"]
 
 
 class RepoFact(BaseModel):

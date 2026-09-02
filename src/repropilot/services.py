@@ -46,7 +46,7 @@ from repropilot.paper import StructuredLLM, extract_paper_spec
 from repropilot.patching import PatchTransaction, workspace_hash
 from repropilot.policy import assess_patch
 from repropilot.reporting import render_report
-from repropilot.repository import scan_repository
+from repropilot.repository import execution_request_facts, scan_repository
 from repropilot.sandbox import DockerSandbox
 from repropilot.scoring import compare_metric, score_reproduction
 
@@ -362,9 +362,15 @@ class DefaultRunServices:
         extract_paper_spec(run_request.paper, self.paper_llm, store=store)
 
     def audit(self, run_request: RunRequest, store: ArtifactStore) -> None:
-        del run_request
         spec = PaperSpec.model_validate(store.read_metadata_from("paper_spec.json"))
-        facts = scan_repository(self._worktree(store), store=store)
+        facts = [
+            *scan_repository(self._worktree(store)),
+            *execution_request_facts(run_request),
+        ]
+        facts = sorted(facts, key=lambda fact: (fact.source_path, fact.line_start, fact.field))
+        store.write_json_artifact(
+            "repo_facts.json", [fact.model_dump(mode="json") for fact in facts]
+        )
         align_claims(spec, facts, store=store)
 
     def build(

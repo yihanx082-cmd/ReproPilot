@@ -55,7 +55,8 @@ flowchart TD
 - `orchestrator.py` / `services.py`：状态机与真实服务接线。
 - `scoring.py` / `reporting.py`：可信度评分和单文件 HTML 报告。
 - `benchmark.py`：故障注入评测指标与 reference harness。
+- `real_benchmark.py`：固定真实仓库获取、隐藏故障生命周期、模型修复评测与证据聚合。
 
 ## MVP 边界
 
-本版本不包含多 Agent、Web 控制台、Kubernetes、完整 GPU 调度、自动数据许可处理或未知仓库上的公开模型基准。它优先证明一个小而完整、证据可追踪、安全边界明确的 Coding Agent 闭环。
+本版本不包含多 Agent、Web 控制台、Kubernetes、完整 GPU 调度或自动数据许可处理。真实 Agent 基准只覆盖 3 个固定仓库中的 6 个单故障案例；它优先证明一个小而完整、证据可追踪、安全边界明确的 Coding Agent 闭环。

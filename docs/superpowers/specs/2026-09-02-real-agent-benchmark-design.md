@@ -17,8 +17,8 @@ file.
 | Repository | License | Pinned commit | Cases |
 |---|---|---|---|
 | `locuslab/convmixer-cifar10` | MIT | `2d3d9b73d3caa6112ecdcea866f1d2805f37cc8e` | dependency, path |
-| `akamaster/pytorch_resnet_cifar10` | BSD-2-Clause | `d5489e8995e81e91ce6b1d69dcc98ad579b0b153` | configuration, CUDA |
-| `karasawatakumi/pytorch-image-classification` | MIT | `4dd18700e9c2eb1787e652326d188e8ecdbac2aa` | metric, data |
+| `akamaster/pytorch_resnet_cifar10` | BSD-2-Clause | `d5489e8995e81e91ce6b1d69dcc98ad579b0b153` | configuration, metric |
+| `karasawatakumi/pytorch-image-classification` | MIT | `4dd18700e9c2eb1787e652326d188e8ecdbac2aa` | CUDA, data |
 
 ## Execution boundary
 

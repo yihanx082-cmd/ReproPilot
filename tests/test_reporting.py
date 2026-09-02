@@ -106,6 +106,35 @@ def _bundle(tmp_path: Path, **overrides: object) -> EvidenceBundle:
     return EvidenceBundle.model_validate(values)
 
 
+def test_report_shows_formal_seed_evidence_and_individual_values(tmp_path: Path) -> None:
+    bundle = _bundle(
+        tmp_path,
+        formal_experiment={
+            "comparison_scope": "paper",
+            "scope_evidence": ["paper_spec.json#reported_results[0]"],
+            "results": [
+                {
+                    "seed": seed,
+                    "artifact": f"formal-seed-{seed}.json",
+                    "argv": ["python", "train.py", "--seed", str(seed)],
+                    "exit_code": 0,
+                    "duration_seconds": 1.5,
+                }
+                for seed in (11, 22, 33)
+            ],
+        },
+    )
+
+    output = render_report(bundle, tmp_path / "formal.html")
+    html = output.read_text(encoding="utf-8")
+
+    assert "Formal experiment" in html
+    assert "paper_spec.json#reported_results[0]" in html
+    assert all(f"Seed {seed}" in html for seed in (11, 22, 33))
+    assert "python train.py --seed 22" in html
+    assert "0.89, 0.9, 0.9" in html
+
+
 def test_report_contains_the_complete_evidence_chain_and_escapes_html(tmp_path: Path) -> None:
     output = render_report(_bundle(tmp_path), tmp_path / "report.html")
     html = output.read_text(encoding="utf-8")

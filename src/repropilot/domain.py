@@ -23,11 +23,29 @@ class RunLimits(BaseModel):
     max_patch_attempts: int = Field(default=3, ge=0, le=3)
 
 
+class FormalExperimentRequest(BaseModel):
+    command: list[str] = Field(min_length=1)
+    seeds: list[int] = Field(min_length=3, max_length=10)
+    comparison_scope: Literal["paper", "reduced"] = "reduced"
+    scope_evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_evidence_contract(self) -> FormalExperimentRequest:
+        if len(set(self.seeds)) != len(self.seeds):
+            raise ValueError("formal experiment seeds must be unique")
+        if not any("{seed}" in token for token in self.command):
+            raise ValueError("formal experiment command must contain {seed}")
+        if self.comparison_scope == "paper" and not self.scope_evidence:
+            raise ValueError("paper comparison scope requires evidence citations")
+        return self
+
+
 class RunRequest(BaseModel):
     paper: Path
     repository: str = Field(min_length=1)
     dataset: DatasetRequest
     command: list[str] = Field(min_length=1)
+    formal_experiment: FormalExperimentRequest | None = None
     environment: EnvironmentRequest = Field(default_factory=EnvironmentRequest)
     limits: RunLimits = Field(default_factory=RunLimits)
 

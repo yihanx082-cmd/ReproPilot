@@ -35,6 +35,55 @@ def test_run_request_rejects_more_than_three_patch_attempts(tmp_path: Path):
         RunRequest.model_validate(request)
 
 
+def test_run_request_accepts_a_cited_three_seed_formal_experiment(tmp_path: Path):
+    _, _, RunRequest = _contracts()
+    request = valid_request(tmp_path)
+    request["formal_experiment"] = {
+        "command": ["python", "train.py", "--seed", "{seed}"],
+        "seeds": [11, 22, 33],
+        "comparison_scope": "paper",
+        "scope_evidence": ["paper_spec.json#results[0]", "repo_facts.json#model"],
+    }
+
+    parsed = RunRequest.model_validate(request)
+
+    assert parsed.formal_experiment is not None
+    assert parsed.formal_experiment.seeds == [11, 22, 33]
+
+
+@pytest.mark.parametrize(
+    "formal_experiment",
+    [
+        {
+            "command": ["python", "train.py", "--seed", "{seed}"],
+            "seeds": [11, 22],
+        },
+        {
+            "command": ["python", "train.py", "--seed", "{seed}"],
+            "seeds": [11, 11, 22],
+        },
+        {
+            "command": ["python", "train.py", "--seed", "11"],
+            "seeds": [11, 22, 33],
+        },
+        {
+            "command": ["python", "train.py", "--seed", "{seed}"],
+            "seeds": [11, 22, 33],
+            "comparison_scope": "paper",
+        },
+    ],
+)
+def test_run_request_rejects_unverifiable_formal_experiments(
+    tmp_path: Path, formal_experiment: dict[str, object]
+) -> None:
+    _, _, RunRequest = _contracts()
+    request = valid_request(tmp_path)
+    request["formal_experiment"] = formal_experiment
+
+    with pytest.raises(ValidationError):
+        RunRequest.model_validate(request)
+
+
 def test_artifact_events_are_append_only(tmp_path: Path):
     ArtifactStore, EvidenceEvent, RunRequest = _contracts()
     store = ArtifactStore.create(

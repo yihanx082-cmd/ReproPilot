@@ -137,6 +137,59 @@ def test_deepseek_paper_json_salvages_invalid_claim_as_unresolved() -> None:
     assert extraction.spec.unresolved_fields == ["training.random_seed"]
 
 
+def test_deepseek_recovers_claims_after_a_result_only_response() -> None:
+    result_only = {
+        "claims": [],
+        "reported_results": [
+            {
+                "metric": "Error",
+                "value": 8.75,
+                "unit": "%",
+                "evidence_text": "ResNet 20 0.27M 8.75",
+                "page": 7,
+                "confidence": 0.98,
+            }
+        ],
+        "unresolved_fields": ["dataset.name", "training.seed"],
+    }
+    claims_only = {
+        "claims": [
+            {
+                "field": "dataset.name",
+                "value": "CIFAR-10",
+                "evidence_text": "CIFAR-10",
+                "page": 1,
+                "confidence": 0.99,
+            }
+        ],
+        "reported_results": [],
+        "unresolved_fields": ["training.seed"],
+    }
+    completions = JsonObjectCompletions(
+        [json.dumps(result_only), json.dumps(claims_only)]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    llm = OpenAICompatiblePaperLLM(
+        client,
+        "deepseek-v4-pro",
+        structured_output_mode="json_object",
+    )
+
+    extraction = llm.extract(
+        [
+            PaperPage(page=1, text="Experiments use CIFAR-10."),
+            PaperPage(page=7, text="ResNet 20 0.27M 8.75"),
+        ]
+    )
+
+    assert completions.call_count == 2
+    assert extraction.spec.claims[0].field == "dataset.name"
+    assert extraction.spec.reported_results[0].value == 8.75
+    assert extraction.spec.unresolved_fields == ["training.seed"]
+    assert extraction.usage.input_tokens == 22
+    assert extraction.usage.output_tokens == 14
+
+
 def test_deepseek_json_mode_validates_a_patch_draft(tmp_path: Path) -> None:
     trainer = tmp_path / "trainer.py"
     trainer.write_text("model.cuda()\n", encoding="utf-8")

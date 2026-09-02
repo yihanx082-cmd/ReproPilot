@@ -24,9 +24,10 @@ def _orchestrator_contracts():
     return ApprovalDecision, ReproPilot, RunStatus
 
 
-def request(tmp_path: Path, max_patch_attempts: int = 3) -> RunRequest:
-    return RunRequest.model_validate(
-        {
+def request(
+    tmp_path: Path, max_patch_attempts: int = 3, *, formal: bool = False
+) -> RunRequest:
+    payload: dict[str, Any] = {
             "paper": str(tmp_path / "paper.pdf"),
             "repository": str(tmp_path / "source"),
             "dataset": {"name": "synthetic", "path": str(tmp_path / "data")},
@@ -36,7 +37,14 @@ def request(tmp_path: Path, max_patch_attempts: int = 3) -> RunRequest:
                 "max_patch_attempts": max_patch_attempts,
             },
         }
-    )
+    if formal:
+        payload["formal_experiment"] = {
+            "command": ["python", "train.py", "--seed", "{seed}"],
+            "seeds": [11, 22, 33],
+            "comparison_scope": "paper",
+            "scope_evidence": ["paper_spec.json#results[0]"],
+        }
+    return RunRequest.model_validate(payload)
 
 
 class FakeServices:
@@ -48,11 +56,15 @@ class FakeServices:
         patch_risk: RiskLevel = RiskLevel.LOW,
         verify_exit_codes: list[int] | None = None,
         smoke_timeouts: list[bool] | None = None,
+        formal_exit_codes: list[int] | None = None,
+        formal_timeouts: list[bool] | None = None,
     ) -> None:
         self.tmp_path = tmp_path
         self.smoke_exit_codes = smoke_exit_codes
         self.smoke_timeouts = smoke_timeouts or [False] * len(smoke_exit_codes)
         self.verify_exit_codes = verify_exit_codes or [0, 0, 0]
+        self.formal_exit_codes = formal_exit_codes or [0, 0, 0]
+        self.formal_timeouts = formal_timeouts or [False, False, False]
         self.patch_risk = patch_risk
         self.proposal_calls = 0
         self.apply_calls: list[PatchProposal] = []
@@ -88,6 +100,21 @@ class FakeServices:
             related_files=["requirements.txt"],
             confidence=0.99,
         )
+
+    def formal_experiment(
+        self, run_request: RunRequest, store: Any, timeout: float
+    ) -> list[CommandResult]:
+        results = []
+        for index, exit_code in enumerate(self.formal_exit_codes):
+            self.command_timeouts.append(timeout)
+            results.append(
+                self._result(
+                    f"formal-{index}",
+                    exit_code,
+                    timed_out=self.formal_timeouts[index],
+                )
+            )
+        return results
 
     def propose_patch(self, diagnosis: Diagnosis, store: Any) -> PatchProposal:
         self.proposal_calls += 1
@@ -155,6 +182,60 @@ def test_successful_smoke_run_follows_the_happy_path(tmp_path: Path):
         "SCORE",
         "REPORT",
     ]
+
+
+def test_formal_experiment_runs_after_successful_smoke(tmp_path: Path) -> None:
+    _, ReproPilot, RunStatus = _orchestrator_contracts()
+    services = FakeServices(tmp_path, smoke_exit_codes=[0])
+
+    summary = ReproPilot(tmp_path / "runs", services).run(request(tmp_path, formal=True))
+
+    assert summary.status == RunStatus.SUCCEEDED
+    assert summary.states == [
+        "INGEST",
+        "AUDIT",
+        "BUILD",
+        "SMOKE_RUN",
+        "FORMAL_EXPERIMENT",
+        "COMPARE",
+        "SCORE",
+        "REPORT",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("exit_codes", "timeouts", "expected_status", "reason"),
+    [
+        ([0, 1, 0], [False, False, False], "FAILED", "Formal experiment failed for seed 22."),
+        (
+            [0, 124, 0],
+            [False, True, False],
+            "TIMED_OUT",
+            "Formal experiment timed out for seed 22.",
+        ),
+    ],
+)
+def test_formal_experiment_failure_is_terminal_without_repair(
+    tmp_path: Path,
+    exit_codes: list[int],
+    timeouts: list[bool],
+    expected_status: str,
+    reason: str,
+) -> None:
+    _, ReproPilot, _ = _orchestrator_contracts()
+    services = FakeServices(
+        tmp_path,
+        smoke_exit_codes=[0],
+        formal_exit_codes=exit_codes,
+        formal_timeouts=timeouts,
+    )
+
+    summary = ReproPilot(tmp_path / "runs", services).run(request(tmp_path, formal=True))
+
+    assert summary.status == expected_status
+    assert summary.reason == reason
+    assert summary.states[-2:] == ["FORMAL_EXPERIMENT", "REPORT"]
+    assert services.proposal_calls == 0
 
 
 def test_low_risk_failure_is_repaired_then_rerun(tmp_path: Path):

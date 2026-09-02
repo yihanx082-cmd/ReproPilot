@@ -12,19 +12,32 @@ import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode
 
 from repropilot.artifacts import ArtifactStore
-from repropilot.domain import RepoFact
+from repropilot.domain import RepoFact, RunRequest
 
 MAX_FILE_SIZE = 1024 * 1024
 IGNORED_DIRECTORIES = {".git", ".venv", "data", "venv", "weights"}
 SUPPORTED_CONFIG_SUFFIXES = {".json", ".toml", ".yaml", ".yml"}
 
 FIELD_ALIASES = {
+    "arch": "model.architecture",
     "batch_size": "training.batch_size",
     "epochs": "training.epochs",
     "learning_rate": "optimizer.learning_rate",
     "lr": "optimizer.learning_rate",
+    "momentum": "optimizer.momentum",
     "seed": "training.seed",
     "weight_decay": "optimizer.weight_decay",
+}
+
+COMMAND_FIELD_FLAGS = {
+    "--arch": "model.architecture",
+    "--epochs": "training.epochs",
+    "--batch-size": "training.batch_size",
+    "--lr": "optimizer.learning_rate",
+    "--learning-rate": "optimizer.learning_rate",
+    "--momentum": "optimizer.momentum",
+    "--weight-decay": "optimizer.weight_decay",
+    "--seed": "training.seed",
 }
 
 
@@ -56,6 +69,55 @@ def scan_repository(
             [fact.model_dump(mode="json") for fact in facts],
         )
     return facts
+
+
+def execution_request_facts(request: RunRequest) -> list[RepoFact]:
+    facts = [
+        RepoFact(
+            field="dataset.name",
+            value=request.dataset.name,
+            source_path="run-request.dataset",
+            line_start=1,
+            extractor="run_request",
+        )
+    ]
+    seen = {"dataset.name"}
+    commands = [("run-request.command", request.command)]
+    if request.formal_experiment is not None:
+        commands.append(
+            ("run-request.formal_experiment.command", request.formal_experiment.command)
+        )
+    for source_path, command in commands:
+        for index, flag in enumerate(command[:-1]):
+            field = COMMAND_FIELD_FLAGS.get(flag)
+            if field is None or field in seen:
+                continue
+            raw_value: object = command[index + 1]
+            if raw_value == "{seed}" and request.formal_experiment is not None:
+                raw_value = request.formal_experiment.seeds
+            facts.append(
+                RepoFact(
+                    field=field,
+                    value=_coerce_cli_value(raw_value),
+                    source_path=source_path,
+                    line_start=index + 1,
+                    extractor="run_request",
+                )
+            )
+            seen.add(field)
+    return facts
+
+
+def _coerce_cli_value(value: object) -> Any:
+    if not isinstance(value, str):
+        return value
+    try:
+        return int(value)
+    except ValueError:
+        try:
+            return float(value)
+        except ValueError:
+            return value
 
 
 def _repository_files(root: Path) -> Iterator[Path]:

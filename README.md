@@ -82,6 +82,23 @@ repropilot run --config examples/cifar10-smoke.yaml --output-root runs
 repropilot inspect runs\<run-id>
 ```
 
+### 三随机种子正式实验
+
+冒烟运行负责尽快发现并修复环境或代码错误；正式实验负责在同一个已修复工作副本中运行可审计的重复实验。参考 [examples/cifar10-formal.yaml](examples/cifar10-formal.yaml)：
+
+```yaml
+formal_experiment:
+  command: [python, trainer.py, --seed, "{seed}"]
+  seeds: [11, 22, 33]
+  comparison_scope: paper
+  scope_evidence:
+    - paper_spec.json#reported_results[0]
+```
+
+`{seed}` 会被逐个替换，每次运行生成独立 JSON 和日志。`comparison_scope: paper` 必须同时给出可审计的证据引用；如果数据、模型或实验范围被缩小，应使用默认的 `reduced`，此时结果接近度不计分。报告会显示每个种子的命令与结果，以及指标的均值、标准差和论文差值。
+
+真实 ResNet-20/CIFAR-10 三种子评估得到 `Error = 8.27 ± 0.00%`，相对论文 `8.75%` 低 `0.48` 个百分点，证据评分为 `70/100 (PARTIAL)`。这验证了多种子执行与证据链，但使用的是公开预训练权重评估，不等同于从头完成三次论文训练。完整记录见 [正式实验结果](docs/formal-demo-result.md)。
+
 ### 高风险补丁审批
 
 指标、数据划分、模型、预训练权重等语义修改不会自动应用。运行暂停后：
@@ -157,7 +174,7 @@ Docker 可执行文件位置因安装方式而异，可省略 `REPROPILOT_DOCKER
 
 ## 明确限制
 
-- MVP 只验证缩小实验闭环，不做完整多随机种子 GPU 训练。
+- 支持 3–10 个种子的顺序正式实验；MVP 尚不做并行 GPU 调度或超出 20 分钟边界的完整训练。
 - 结果解析目前支持日志中的 `metric=value`/`metric: value`。
 - 远程仓库、私有依赖和受限数据集仍需要用户提供访问权限。
 - 论文声明抽取与补丁生成依赖所选模型；所有模型输出仍会经过本地证据验证和风险策略。

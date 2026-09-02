@@ -76,6 +76,19 @@
     {% else %}<p>unknown</p>{% endif %}
   </section>
 
+  {% if bundle.formal_experiment %}
+  <section>
+    <h2>Formal experiment</h2>
+    <p><strong>Comparison scope:</strong> {{ bundle.formal_experiment.comparison_scope }}</p>
+    <p><strong>Scope evidence:</strong> {{ bundle.formal_experiment.scope_evidence|join(", ") }}</p>
+    <table><thead><tr><th>Seed</th><th>Command</th><th>Result</th><th>Duration</th><th>Artifact</th></tr></thead><tbody>
+    {% for result in bundle.formal_experiment.results %}
+      <tr><td>Seed {{ result.seed }}</td><td><code>{{ result.argv|join(" ") }}</code></td><td>{% if result.timed_out %}timed out{% else %}exit {{ result.exit_code }}{% endif %}</td><td>{{ "%.2f seconds"|format(result.duration_seconds) }}</td><td>{{ result.artifact }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </section>
+  {% endif %}
+
   <section>
     <h2>Repair timeline</h2>
     {% if bundle.repair_attempts %}
@@ -95,9 +108,9 @@
   <section>
     <h2>Metric comparison</h2>
     {% if score.metric_comparisons %}
-    <table><thead><tr><th>Metric</th><th>Paper</th><th>Run mean ± std</th><th>Delta</th><th>Comparison</th></tr></thead><tbody>
+    <table><thead><tr><th>Metric</th><th>Paper</th><th>Run values</th><th>Run mean ± std</th><th>Delta</th><th>Comparison</th></tr></thead><tbody>
     {% for metric in score.metric_comparisons %}
-      <tr><td>{{ metric.name }}</td><td>{{ metric.paper_value }}</td><td>{{ "%.6f ± %.6f"|format(metric.mean, metric.std) }}</td><td>{{ "%+.6f"|format(metric.delta) }}</td><td>{{ "comparable" if metric.comparable else "not comparable" }}</td></tr>
+      <tr><td>{{ metric.name }}</td><td>{{ metric.paper_value }}</td><td>{{ metric.run_values|join(", ") }}</td><td>{{ "%.6f ± %.6f"|format(metric.mean, metric.std) }}</td><td>{{ "%+.6f"|format(metric.delta) }}</td><td>{{ "comparable" if metric.comparable else "not comparable" }}</td></tr>
     {% endfor %}
     </tbody></table>
     {% else %}<p>unknown</p>{% endif %}

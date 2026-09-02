@@ -191,6 +191,86 @@ def test_missing_dependency_runs_from_pdf_through_patch_and_html_report(tmp_path
     assert "macro_f1" in report
 
 
+def test_formal_experiment_persists_one_command_artifact_per_seed(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "train.py").write_text(
+        """import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--seed", type=int, default=0)
+args = parser.parse_args()
+print(f"macro_f1={0.87 + args.seed / 10000:.3f}")
+""",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    (dataset / "sample.txt").write_text("synthetic", encoding="utf-8")
+    paper = tmp_path / "paper.pdf"
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text(
+        (72, 72),
+        "We use a learning rate of 1e-4 and report macro-F1 of 0.90.",
+    )
+    document.save(paper)
+    document.close()
+    request = RunRequest.model_validate(
+        {
+            "paper": str(paper),
+            "repository": str(source),
+            "dataset": {"name": "synthetic", "path": str(dataset)},
+            "command": ["python", "train.py"],
+            "formal_experiment": {
+                "command": ["python", "train.py", "--seed", "{seed}"],
+                "seeds": [11, 22, 33],
+                "comparison_scope": "paper",
+                "scope_evidence": ["paper_spec.json#reported_results[0]"],
+            },
+            "limits": {"wall_time_seconds": 60, "max_patch_attempts": 0},
+        }
+    )
+    services = DefaultRunServices(
+        paper_llm=FakePaperLLM(),
+        patch_generator=FakePatchGenerator(),
+        sandbox_factory=lambda worktree, source, dataset, logs, image: LocalFixtureSandbox(
+            worktree, logs
+        ),
+    )
+
+    summary = ReproPilot(tmp_path / "runs", services).run(request)
+
+    assert summary.status == RunStatus.SUCCEEDED, summary.reason
+    artifacts = [
+        json.loads(
+            (summary.run_dir / f"formal-seed-{seed}.json").read_text(encoding="utf-8")
+        )
+        for seed in (11, 22, 33)
+    ]
+    assert [artifact["argv"][-1] for artifact in artifacts] == ["11", "22", "33"]
+    manifest = json.loads(
+        (summary.run_dir / "experiment_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["seeds"] == [11, 22, 33]
+    assert manifest["comparison_scope"] == "paper"
+    assert [item["exit_code"] for item in manifest["results"]] == [0, 0, 0]
+    comparisons = json.loads(
+        (summary.run_dir / "metric_comparisons.json").read_text(encoding="utf-8")
+    )
+    assert comparisons[0]["run_values"] == pytest.approx([0.871, 0.872, 0.873])
+    assert comparisons[0]["mean"] == pytest.approx(0.872)
+    assert comparisons[0]["std"] == pytest.approx(0.00081649658)
+    assert len(comparisons[0]["evidence"]) == 4
+    bundle = json.loads(
+        (summary.run_dir / "evidence_bundle.json").read_text(encoding="utf-8")
+    )
+    assert bundle["random_seeds"]["status"] == "verified"
+    assert bundle["result_proximity"]["status"] == "partial"
+    score = json.loads((summary.run_dir / "repro_score.json").read_text(encoding="utf-8"))
+    assert score["total"] >= 70
+    assert score["label"] == "PARTIAL"
+
+
 def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:
     results = [
         PaperResult(

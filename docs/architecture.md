@@ -12,7 +12,9 @@ flowchart TD
     C --> E["Paper/code alignment"]
     D --> E
     E --> F["DockerSandbox build and smoke run"]
-    F -->|"exit 0"| K["Metric comparison"]
+    F -->|"exit 0 + formal config"| Q["Formal multi-seed experiment"]
+    F -->|"exit 0 + smoke only"| K["Metric comparison"]
+    Q --> K
     F -->|"failure"| G["Deterministic diagnosis"]
     G --> H["Patch proposal"]
     H --> I{"Local risk policy"}
@@ -28,7 +30,7 @@ flowchart TD
 
 ## 状态与证据
 
-`ReproPilot` 是显式状态机：`INGEST → AUDIT → BUILD → SMOKE_RUN → DIAGNOSE → APPLY_PATCH → VERIFY → COMPARE → SCORE → REPORT`。高风险补丁进入 `WAITING_APPROVAL`，审批和补丁 SHA-256 一起持久化，因此进程退出后仍可恢复。
+`ReproPilot` 是显式状态机：`INGEST → AUDIT → BUILD → SMOKE_RUN → [FORMAL_EXPERIMENT] → COMPARE → SCORE → REPORT`。冒烟失败时进入 `DIAGNOSE → APPLY_PATCH → VERIFY` 修复循环；高风险补丁进入 `WAITING_APPROVAL`。正式实验是可选阶段，每个种子都有独立命令 artifact，失败会生成终止报告而不会扩大自动修复范围。
 
 `run.json` 保存当前状态，`events.jsonl` 追加事件；其余 JSON、日志和 HTML 都是可定位的 artifact。状态转换先记录，再执行副作用，便于中断审计。
 

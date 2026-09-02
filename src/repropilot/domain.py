@@ -23,11 +23,29 @@ class RunLimits(BaseModel):
     max_patch_attempts: int = Field(default=3, ge=0, le=3)
 
 
+class FormalExperimentRequest(BaseModel):
+    command: list[str] = Field(min_length=1)
+    seeds: list[int] = Field(min_length=3, max_length=10)
+    comparison_scope: Literal["paper", "reduced"] = "reduced"
+    scope_evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_evidence_contract(self) -> FormalExperimentRequest:
+        if len(set(self.seeds)) != len(self.seeds):
+            raise ValueError("formal experiment seeds must be unique")
+        if not any("{seed}" in token for token in self.command):
+            raise ValueError("formal experiment command must contain {seed}")
+        if self.comparison_scope == "paper" and not self.scope_evidence:
+            raise ValueError("paper comparison scope requires evidence citations")
+        return self
+
+
 class RunRequest(BaseModel):
     paper: Path
     repository: str = Field(min_length=1)
     dataset: DatasetRequest
     command: list[str] = Field(min_length=1)
+    formal_experiment: FormalExperimentRequest | None = None
     environment: EnvironmentRequest = Field(default_factory=EnvironmentRequest)
     limits: RunLimits = Field(default_factory=RunLimits)
 
@@ -47,6 +65,7 @@ class RunState(StrEnum):
     AUDIT = "AUDIT"
     BUILD = "BUILD"
     SMOKE_RUN = "SMOKE_RUN"
+    FORMAL_EXPERIMENT = "FORMAL_EXPERIMENT"
     DIAGNOSE = "DIAGNOSE"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     APPLY_PATCH = "APPLY_PATCH"
@@ -116,7 +135,7 @@ class PaperExtraction(BaseModel):
     usage: ModelUsage
 
 
-RepoExtractor = Literal["yaml", "json", "toml", "python_ast", "readme"]
+RepoExtractor = Literal["yaml", "json", "toml", "python_ast", "readme", "run_request"]
 
 
 class RepoFact(BaseModel):
@@ -264,6 +283,23 @@ class RepairAttempt(BaseModel):
     test_result: CommandResult | None = None
 
 
+class FormalSeedEvidence(BaseModel):
+    seed: int
+    artifact: str = Field(min_length=1)
+    argv: list[str] = Field(min_length=1)
+    exit_code: int
+    timed_out: bool = False
+    duration_seconds: float = Field(ge=0)
+    image_digest: str | None = None
+    dockerfile_sha256: str | None = None
+
+
+class FormalExperimentEvidence(BaseModel):
+    comparison_scope: Literal["paper", "reduced"]
+    scope_evidence: list[str] = Field(default_factory=list)
+    results: list[FormalSeedEvidence] = Field(default_factory=list)
+
+
 class EvidenceBundle(BaseModel):
     environment: DimensionEvidence
     data: DimensionEvidence
@@ -288,6 +324,7 @@ class EvidenceBundle(BaseModel):
     repair_attempts: list[RepairAttempt] = Field(default_factory=list)
     duration_seconds: float | None = Field(default=None, ge=0)
     model_usage: list[ModelUsage] = Field(default_factory=list)
+    formal_experiment: FormalExperimentEvidence | None = None
     unresolved_risks: list[str] = Field(default_factory=list)
 
 

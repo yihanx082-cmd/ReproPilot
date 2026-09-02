@@ -70,6 +70,8 @@ class OpenAICompatiblePaperLLM:
     def extract(self, pages: list[PaperPage]) -> PaperExtraction:
         page_text = "\n\n".join(f"[PAGE {page.page}]\n{page.text}" for page in pages)
         started_at = time.perf_counter()
+        input_tokens = 0
+        output_tokens = 0
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": PAPER_EXTRACTION_PROMPT},
             {"role": "user", "content": page_text},
@@ -96,6 +98,9 @@ class OpenAICompatiblePaperLLM:
                     extra_body={"thinking": {"type": "disabled"}},
                     max_tokens=8192,
                 )
+                if completion.usage is not None:
+                    input_tokens += completion.usage.prompt_tokens
+                    output_tokens += completion.usage.completion_tokens
                 content = completion.choices[0].message.content
                 try:
                     parsed = PaperSpec.model_validate_json(content) if content else None
@@ -117,6 +122,62 @@ class OpenAICompatiblePaperLLM:
                     )
             if parsed is None and content:
                 parsed = _salvage_paper_spec(content)
+            if parsed is not None and not parsed.claims and parsed.reported_results:
+                recovery_messages: list[ChatCompletionMessageParam] = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Extract only evidence-backed reproduction claims from the paper. "
+                            "Do not return reported result-table rows. Prioritize dataset, model "
+                            "variant, optimizer, learning rate, batch size, epochs, seed policy, "
+                            "preprocessing, augmentation, metrics, and pretrained weights."
+                        ),
+                    },
+                    {"role": "user", "content": page_text},
+                    {
+                        "role": "system",
+                        "content": (
+                            "Return valid JSON matching this JSON schema: "
+                            + json.dumps(PaperSpec.model_json_schema())
+                        ),
+                    },
+                ]
+                recovery = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=recovery_messages,
+                    response_format=response_format,
+                    extra_body={"thinking": {"type": "disabled"}},
+                    max_tokens=4096,
+                )
+                if recovery.usage is not None:
+                    input_tokens += recovery.usage.prompt_tokens
+                    output_tokens += recovery.usage.completion_tokens
+                recovery_content = recovery.choices[0].message.content
+                try:
+                    recovered = (
+                        PaperSpec.model_validate_json(recovery_content)
+                        if recovery_content
+                        else None
+                    )
+                except ValidationError:
+                    recovered = None
+                if recovered is not None and recovered.claims:
+                    recovered_fields = {claim.field for claim in recovered.claims}
+                    unresolved = list(
+                        dict.fromkeys(
+                            field
+                            for field in [
+                                *parsed.unresolved_fields,
+                                *recovered.unresolved_fields,
+                            ]
+                            if field not in recovered_fields
+                        )
+                    )
+                    parsed = PaperSpec(
+                        claims=recovered.claims,
+                        reported_results=parsed.reported_results,
+                        unresolved_fields=unresolved,
+                    )
         else:
             completion = self.client.chat.completions.parse(
                 model=self.model,
@@ -124,17 +185,19 @@ class OpenAICompatiblePaperLLM:
                 response_format=PaperSpec,
             )
             parsed = completion.choices[0].message.parsed
+            if completion.usage is not None:
+                input_tokens += completion.usage.prompt_tokens
+                output_tokens += completion.usage.completion_tokens
         duration_seconds = time.perf_counter() - started_at
         if parsed is None:
             raise PaperModelResponseError("Model returned no parsed paper specification")
 
-        usage = completion.usage
         return PaperExtraction(
             spec=parsed,
             usage=ModelUsage(
                 model=completion.model,
-                input_tokens=usage.prompt_tokens if usage is not None else 0,
-                output_tokens=usage.completion_tokens if usage is not None else 0,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 duration_seconds=duration_seconds,
             ),
         )

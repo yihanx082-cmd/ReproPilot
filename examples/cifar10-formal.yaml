@@ -1,0 +1,44 @@
+# Replace these paths before running. The API key stays in an environment variable.
+paper: D:/ReproPilotDemo/resnet-cifar10/paper.pdf
+repository: D:/ReproPilotDemo/resnet-cifar10/repository
+dataset:
+  name: CIFAR-10
+  path: D:/ReproPilotDemo/resnet-cifar10/data
+command:
+  - python
+  - trainer.py
+  - --arch
+  - resnet20
+  - --workers
+  - "0"
+  - --batch-size
+  - "128"
+  - --evaluate
+  - --resume
+  - pretrained_models/resnet20-12fca82f.th
+formal_experiment:
+  command:
+    - python
+    - -c
+    - import random, numpy, torch; seed={seed}; random.seed(seed); numpy.random.seed(seed); torch.manual_seed(seed); exec(compile(open("trainer.py", encoding="utf-8").read(), "trainer.py", "exec"))
+    - --arch
+    - resnet20
+    - --workers
+    - "0"
+    - --batch-size
+    - "128"
+    - --evaluate
+    - --resume
+    - pretrained_models/resnet20-12fca82f.th
+  seeds: [11, 22, 33]
+  comparison_scope: paper
+  scope_evidence:
+    - paper_spec.json#reported_results[ResNet-20]
+    - repo_facts.json#model.architecture=resnet20
+    - repository/pretrained_models/resnet20-12fca82f.th
+environment:
+  python: "3.11"
+  device: cpu
+limits:
+  wall_time_seconds: 1200
+  max_patch_attempts: 3

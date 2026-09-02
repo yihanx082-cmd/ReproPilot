@@ -133,13 +133,25 @@ repropilot resume runs\<run-id>
 
 ## 评测集
 
-六个单故障案例覆盖缺少依赖、错误数据路径、学习率不一致、CPU 环境中的 CUDA 默认值、micro/macro-F1 混淆和随机/患者级划分混淆：
+项目保留两套用途不同的六案例评测。
+
+确定性 reference harness 用已知注入的逆补丁验证评测管线、安全门和指标计算：
 
 ```powershell
 python scripts/run_benchmark.py --cases benchmark/cases.yaml --output artifacts/benchmark
 ```
 
-当前提交记录的是 `reference_harness_baseline`：它用已知注入的逆补丁验证评测管线、安全门和指标计算，定位/修复/测试通过率均为 100%，无关改动率为 0%。这不是未知仓库上的模型泛化成绩；接入真实模型后的结果必须单独报告。
+真实 Agent benchmark 固定 3 个开源 PyTorch 图像分类仓库的提交，注入依赖、路径、配置、指标、CUDA 和数据故障，再由模型生成未知补丁：
+
+```powershell
+python scripts/run_real_benchmark.py `
+  --cases benchmark/real-projects.yaml `
+  --output artifacts/real-agent-benchmark `
+  --source-cache artifacts/pinned-sources `
+  --approve-high-risk
+```
+
+2026-09-03 的 `deepseek-v4-pro` 基线中，6/6 案例定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,846 tokens。指标与数据类修改均正确经过高风险审批门。完整方法、逐案例结果和证据摘要见 [真实 Agent 基线](benchmark/real-baseline-summary.md)；reference harness 结果见 [确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
 
 ## 测试
 
@@ -164,7 +176,7 @@ Docker 可执行文件位置因安装方式而异，可省略 `REPROPILOT_DOCKER
 - 论文解析通常调用模型一次；每次失败最多提出 3 个补丁。
 - 默认总时限 20 分钟，Docker 限制为 2 CPU、2 GB 内存、256 个进程，无网络运行。
 - 真实成本取决于模型价格、论文长度和补丁次数；报告会保存 token、耗时和可获得的成本证据。
-- 六案例 reference 基线不调用模型，开发机墙钟时间约 25 秒。
+- 六案例 reference 基线不调用模型，开发机墙钟时间约 25 秒；真实 Agent 基线的 6 次模型调用耗时约 54 秒。
 
 ## 威胁模型
 
@@ -178,6 +190,6 @@ Docker 可执行文件位置因安装方式而异，可省略 `REPROPILOT_DOCKER
 - 结果解析目前支持日志中的 `metric=value`/`metric: value`。
 - 远程仓库、私有依赖和受限数据集仍需要用户提供访问权限。
 - 论文声明抽取与补丁生成依赖所选模型；所有模型输出仍会经过本地证据验证和风险策略。
-- reference benchmark 是评测工具的上界/回归基线，不是 Agent 在未知项目上的成绩。
+- 当前真实 Agent 基线只有 3 个仓库和 6 个单故障案例，适合证明闭环与安全策略，尚不足以代表对广泛未知项目的泛化能力。
 
 详细设计见 [架构说明](docs/architecture.md)，演示录制见 [五分钟演示脚本](docs/demo-script.md)。

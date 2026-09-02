@@ -1,0 +1,12 @@
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -142,7 +142,7 @@ class SimpleData(LightningDataModule):
+         dataloader = DataLoader(
+             self.val_dataset,
+             batch_size=self.batch_size,
+-            shuffle=False,
++            shuffle=True,
+             drop_last=False,
+             num_workers=self.num_workers,
+         )

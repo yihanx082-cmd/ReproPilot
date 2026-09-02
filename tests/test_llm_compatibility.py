@@ -239,6 +239,12 @@ def test_deepseek_json_mode_validates_a_patch_draft(tmp_path: Path) -> None:
     assert completions.kwargs["extra_body"] == {"thinking": {"type": "disabled"}}
     assert "json" in completions.kwargs["messages"][-1]["content"].casefold()
     assert "map_location" in completions.kwargs["messages"][0]["content"]
+    assert len(generator.usage) == 1
+    assert generator.usage[0].model == "deepseek-v4-pro"
+    assert generator.usage[0].input_tokens == 11
+    assert generator.usage[0].output_tokens == 7
+    assert generator.usage[0].duration_seconds >= 0
+    assert generator.usage[0].estimated_cost_usd is None
 
 
 def test_patch_generator_retries_one_invalid_git_diff(tmp_path: Path) -> None:
@@ -283,6 +289,8 @@ def test_patch_generator_retries_one_invalid_git_diff(tmp_path: Path) -> None:
 
     assert completions.call_count == 2
     assert proposal.diff == valid["diff"]
+    assert len(generator.usage) == 2
+    assert all(item.input_tokens == 0 for item in generator.usage)
 
 
 def test_deepseek_base_url_selects_json_object_mode(monkeypatch: Any) -> None:

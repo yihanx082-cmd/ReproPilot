@@ -13,7 +13,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -115,6 +115,7 @@ class OpenAICompatiblePatchGenerator:
         self.client = client
         self.model = model
         self.structured_output_mode = structured_output_mode
+        self.usage: list[ModelUsage] = []
 
     def propose(
         self, diagnosis: Diagnosis, worktree: Path, log_tail: str
@@ -242,6 +243,7 @@ class OpenAICompatiblePatchGenerator:
         self, messages: list[ChatCompletionMessageParam]
     ) -> PatchEditDraft:
         response_format: ResponseFormatJSONObject = {"type": "json_object"}
+        started = time.monotonic()
         completion = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -249,6 +251,7 @@ class OpenAICompatiblePatchGenerator:
             extra_body={"thinking": {"type": "disabled"}},
             max_tokens=4096,
         )
+        self._record_usage(completion, started)
         content = completion.choices[0].message.content
         if not content:
             raise RuntimeError("Patch model returned no structured edits")
@@ -302,15 +305,29 @@ class OpenAICompatiblePatchGenerator:
     def _request_draft(
         self, messages: list[ChatCompletionMessageParam]
     ) -> PatchDraft:
+        started = time.monotonic()
         completion = self.client.chat.completions.parse(
             model=self.model,
             messages=messages,
             response_format=PatchDraft,
         )
+        self._record_usage(completion, started)
         draft = completion.choices[0].message.parsed
         if draft is None:
             raise RuntimeError("Patch model returned no structured patch")
         return draft
+
+    def _record_usage(self, completion: Any, started: float) -> None:
+        usage = getattr(completion, "usage", None)
+        self.usage.append(
+            ModelUsage(
+                model=str(getattr(completion, "model", self.model)),
+                input_tokens=int(getattr(usage, "prompt_tokens", 0)),
+                output_tokens=int(getattr(usage, "completion_tokens", 0)),
+                duration_seconds=time.monotonic() - started,
+                estimated_cost_usd=None,
+            )
+        )
 
     @staticmethod
     def _git_apply_error(diff: str, worktree: Path) -> str:

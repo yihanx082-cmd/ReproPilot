@@ -1,0 +1,11 @@
+diff --git a/train.py b/train.py
+--- a/train.py
++++ b/train.py
+@@ -84,2 +84,2 @@
+-trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
++trainset = torchvision.datasets.CIFAR10(root='./missing-data', train=True,
+                                         download=True, transform=train_transform)
+@@ -89,2 +89,2 @@
+-testset = torchvision.datasets.CIFAR10(root='./data', train=False,
++testset = torchvision.datasets.CIFAR10(root='./missing-data', train=False,
+                                        download=True, transform=test_transform)

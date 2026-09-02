@@ -33,6 +33,7 @@ from repropilot.domain import (
     EvidenceBundle,
     EvidenceEvent,
     EvidenceStatus,
+    FormalExperimentEvidence,
     ModelUsage,
     PaperResult,
     PaperSpec,
@@ -48,7 +49,11 @@ from repropilot.policy import assess_patch
 from repropilot.reporting import render_report
 from repropilot.repository import execution_request_facts, scan_repository
 from repropilot.sandbox import DockerSandbox
-from repropilot.scoring import compare_metric, score_reproduction
+from repropilot.scoring import (
+    compare_metric,
+    result_proximity_evidence,
+    score_reproduction,
+)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -543,22 +548,33 @@ class DefaultRunServices:
 
     def compare(self, run_request: RunRequest, store: ArtifactStore) -> None:
         spec = PaperSpec.model_validate(store.read_metadata_from("paper_spec.json"))
-        successful = self._latest_successful_smoke(store)
-        text = successful.stdout_path.read_text(encoding="utf-8", errors="replace")
-        observed = self._parse_observed_metrics(text)
+        successful_runs = self._successful_formal_results(store)
+        selection_command = run_request.command
+        if not successful_runs:
+            successful_runs = [self._latest_successful_smoke(store)]
+        elif run_request.formal_experiment is not None:
+            selection_command = run_request.formal_experiment.command
+        observed_runs = [
+            self._parse_observed_metrics(
+                result.stdout_path.read_text(encoding="utf-8", errors="replace")
+            )
+            for result in successful_runs
+        ]
         comparisons = []
-        artifact = successful.stdout_path.name
         for result in self._results_for_command(
-            spec.reported_results, run_request.command
+            spec.reported_results, selection_command
         ):
             key = self._metric_key(result.metric)
-            if key in observed:
+            if all(key in observed for observed in observed_runs):
                 comparisons.append(
                     compare_metric(
                         result.metric,
                         paper_value=result.value,
-                        run_values=[observed[key]],
-                        evidence=[artifact, "paper_spec.json"],
+                        run_values=[observed[key] for observed in observed_runs],
+                        evidence=[
+                            *(run.stdout_path.name for run in successful_runs),
+                            "paper_spec.json",
+                        ],
                     )
                 )
         store.write_json_artifact(
@@ -625,6 +641,23 @@ class DefaultRunServices:
                 if all(finding.status.value == "match" for finding in findings)
                 else EvidenceStatus.PARTIAL
             )
+        formal = self._formal_experiment_evidence(store)
+        formal_success = (
+            formal is not None
+            and len({result.seed for result in formal.results}) >= 3
+            and all(result.exit_code == 0 and not result.timed_out for result in formal.results)
+        )
+        paper_scope = formal is not None and formal.comparison_scope == "paper"
+        dataset_matched = any(
+            finding.field.startswith("dataset.") and finding.status.value == "match"
+            for finding in findings
+        )
+        result_evidence = ["experiment_manifest.json", "metric_comparisons.json"]
+        proximity = result_proximity_evidence(
+            comparisons,
+            comparable=paper_scope and formal_success,
+            evidence=result_evidence,
+        )
         return EvidenceBundle(
             environment=DimensionEvidence(
                 status=EvidenceStatus.VERIFIED
@@ -635,10 +668,16 @@ class DefaultRunServices:
                 evidence=["build.json"] if build_result is not None else [],
             ),
             data=DimensionEvidence(
-                status=EvidenceStatus.PARTIAL
+                status=EvidenceStatus.VERIFIED
+                if data_available and dataset_matched
+                else EvidenceStatus.PARTIAL
                 if data_available
                 else EvidenceStatus.UNKNOWN,
-                evidence=["run.json"] if data_available else [],
+                evidence=["alignment.json", "experiment_manifest.json"]
+                if data_available and dataset_matched and formal is not None
+                else ["run.json"]
+                if data_available
+                else [],
             ),
             configuration=DimensionEvidence(
                 status=configuration_status,
@@ -648,11 +687,20 @@ class DefaultRunServices:
                 status=EvidenceStatus.VERIFIED if comparisons else EvidenceStatus.UNKNOWN,
                 evidence=["metric_comparisons.json"] if comparisons else [],
             ),
-            random_seeds=DimensionEvidence(status=EvidenceStatus.UNKNOWN),
-            result_proximity=DimensionEvidence(
-                status=EvidenceStatus.VERIFIED if comparisons else EvidenceStatus.UNKNOWN,
-                evidence=["metric_comparisons.json"] if comparisons else [],
+            random_seeds=DimensionEvidence(
+                status=EvidenceStatus.VERIFIED
+                if formal_success
+                else EvidenceStatus.FAILED
+                if formal is not None
+                else EvidenceStatus.UNKNOWN,
+                evidence=[
+                    "experiment_manifest.json",
+                    *(result.artifact for result in formal.results),
+                ]
+                if formal is not None
+                else [],
             ),
+            result_proximity=proximity,
             external_dependencies=DimensionEvidence(
                 status=EvidenceStatus.VERIFIED
                 if build_succeeded
@@ -664,15 +712,21 @@ class DefaultRunServices:
             metric_comparisons=comparisons,
             execution_succeeded=True,
             evidence_complete=(store.run_dir / "paper_spec.json").exists(),
-            dataset_subset=True,
+            dataset_subset=not paper_scope,
             status=None,
             paper_source=str(request.paper),
             repository_source=request.repository,
             dataset_source=f"{request.dataset.name}: {request.dataset.path}",
             alignment_findings=findings,
             model_usage=self._model_usage(store),
+            formal_experiment=formal,
             unresolved_risks=[
-                "Smoke-run dataset or epoch scope differs from a full paper reproduction."
+                (
+                    "Paper-comparison scope relies on declared citations preserved in "
+                    "experiment_manifest.json."
+                    if paper_scope
+                    else "Smoke-run dataset or epoch scope differs from a full paper reproduction."
+                )
             ],
         )
 
@@ -888,6 +942,30 @@ class DefaultRunServices:
         return successful[-1]
 
     @staticmethod
+    def _formal_experiment_evidence(
+        store: ArtifactStore,
+    ) -> FormalExperimentEvidence | None:
+        path = store.run_dir / "experiment_manifest.json"
+        if not path.exists():
+            return None
+        return FormalExperimentEvidence.model_validate_json(path.read_text(encoding="utf-8"))
+
+    @classmethod
+    def _successful_formal_results(cls, store: ArtifactStore) -> list[CommandResult]:
+        evidence = cls._formal_experiment_evidence(store)
+        if evidence is None:
+            return []
+        results = [
+            CommandResult.model_validate_json(
+                (store.run_dir / item.artifact).read_text(encoding="utf-8")
+            )
+            for item in evidence.results
+        ]
+        if any(result.exit_code != 0 or result.timed_out for result in results):
+            return []
+        return results
+
+    @staticmethod
     def _metric_key(value: str) -> str:
         return re.sub(r"[^a-z0-9]", "", value.casefold())
 
@@ -958,6 +1036,7 @@ class DefaultRunServices:
             if path.name == "build.json"
             or path.name.startswith("smoke-")
             or path.name.startswith("verify-")
+            or path.name.startswith("formal-seed-")
         ]
 
     @staticmethod

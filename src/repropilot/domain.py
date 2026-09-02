@@ -283,6 +283,23 @@ class RepairAttempt(BaseModel):
     test_result: CommandResult | None = None
 
 
+class FormalSeedEvidence(BaseModel):
+    seed: int
+    artifact: str = Field(min_length=1)
+    argv: list[str] = Field(min_length=1)
+    exit_code: int
+    timed_out: bool = False
+    duration_seconds: float = Field(ge=0)
+    image_digest: str | None = None
+    dockerfile_sha256: str | None = None
+
+
+class FormalExperimentEvidence(BaseModel):
+    comparison_scope: Literal["paper", "reduced"]
+    scope_evidence: list[str] = Field(default_factory=list)
+    results: list[FormalSeedEvidence] = Field(default_factory=list)
+
+
 class EvidenceBundle(BaseModel):
     environment: DimensionEvidence
     data: DimensionEvidence
@@ -307,6 +324,7 @@ class EvidenceBundle(BaseModel):
     repair_attempts: list[RepairAttempt] = Field(default_factory=list)
     duration_seconds: float | None = Field(default=None, ge=0)
     model_usage: list[ModelUsage] = Field(default_factory=list)
+    formal_experiment: FormalExperimentEvidence | None = None
     unresolved_risks: list[str] = Field(default_factory=list)
 
 

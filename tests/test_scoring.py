@@ -10,7 +10,12 @@ from repropilot.domain import (
     MetricComparison,
     ReproductionLabel,
 )
-from repropilot.scoring import SCORE_WEIGHTS, compare_metric, score_reproduction
+from repropilot.scoring import (
+    SCORE_WEIGHTS,
+    compare_metric,
+    result_proximity_evidence,
+    score_reproduction,
+)
 
 
 def _dimension(status: EvidenceStatus, artifact: str) -> DimensionEvidence:
@@ -133,3 +138,42 @@ def test_metric_comparison_is_deterministic() -> None:
         evidence=[],
     )
     assert comparison.std == pytest.approx(0.0081649658)
+
+
+@pytest.mark.parametrize(
+    ("paper_value", "run_value", "expected"),
+    [
+        (8.75, 8.27, EvidenceStatus.VERIFIED),
+        (0.90, 0.872, EvidenceStatus.PARTIAL),
+        (90.0, 80.0, EvidenceStatus.FAILED),
+    ],
+)
+def test_result_proximity_uses_percentage_point_thresholds(
+    paper_value: float, run_value: float, expected: EvidenceStatus
+) -> None:
+    comparison = compare_metric(
+        "metric",
+        paper_value=paper_value,
+        run_values=[run_value],
+        evidence=["formal-seed-11.stdout.log", "paper_spec.json"],
+    )
+
+    dimension = result_proximity_evidence(
+        [comparison],
+        comparable=True,
+        evidence=["experiment_manifest.json", "metric_comparisons.json"],
+    )
+
+    assert dimension.status == expected
+    assert dimension.evidence == ["experiment_manifest.json", "metric_comparisons.json"]
+
+
+def test_result_proximity_stays_unknown_for_reduced_scope() -> None:
+    comparison = compare_metric("metric", paper_value=8.75, run_values=[8.27])
+
+    dimension = result_proximity_evidence(
+        [comparison], comparable=False, evidence=["metric_comparisons.json"]
+    )
+
+    assert dimension.status == EvidenceStatus.UNKNOWN
+    assert dimension.evidence == []

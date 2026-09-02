@@ -254,6 +254,21 @@ print(f"macro_f1={0.87 + args.seed / 10000:.3f}")
     assert manifest["seeds"] == [11, 22, 33]
     assert manifest["comparison_scope"] == "paper"
     assert [item["exit_code"] for item in manifest["results"]] == [0, 0, 0]
+    comparisons = json.loads(
+        (summary.run_dir / "metric_comparisons.json").read_text(encoding="utf-8")
+    )
+    assert comparisons[0]["run_values"] == pytest.approx([0.871, 0.872, 0.873])
+    assert comparisons[0]["mean"] == pytest.approx(0.872)
+    assert comparisons[0]["std"] == pytest.approx(0.00081649658)
+    assert len(comparisons[0]["evidence"]) == 4
+    bundle = json.loads(
+        (summary.run_dir / "evidence_bundle.json").read_text(encoding="utf-8")
+    )
+    assert bundle["random_seeds"]["status"] == "verified"
+    assert bundle["result_proximity"]["status"] == "partial"
+    score = json.loads((summary.run_dir / "repro_score.json").read_text(encoding="utf-8"))
+    assert score["total"] >= 70
+    assert score["label"] == "PARTIAL"
 
 
 def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:

@@ -53,6 +53,30 @@ def compare_metric(
     )
 
 
+def result_proximity_evidence(
+    comparisons: list[MetricComparison],
+    *,
+    comparable: bool,
+    evidence: list[str],
+) -> DimensionEvidence:
+    if not comparable or not comparisons:
+        return DimensionEvidence(status=EvidenceStatus.UNKNOWN)
+    deltas = [_percentage_point_delta(comparison) for comparison in comparisons]
+    largest_delta = max(deltas)
+    if largest_delta <= 1.0:
+        status = EvidenceStatus.VERIFIED
+    elif largest_delta <= 5.0:
+        status = EvidenceStatus.PARTIAL
+    else:
+        status = EvidenceStatus.FAILED
+    return DimensionEvidence(status=status, evidence=evidence)
+
+
+def _percentage_point_delta(comparison: MetricComparison) -> float:
+    scale = 100.0 if max(abs(comparison.paper_value), abs(comparison.mean)) <= 1.0 else 1.0
+    return abs(comparison.delta) * scale
+
+
 def score_reproduction(evidence: EvidenceBundle) -> ReproScore:
     reduced = evidence.dataset_subset or evidence.epoch_count_differs or evidence.model_differs
     comparisons = [

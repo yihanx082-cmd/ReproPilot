@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import subprocess
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -260,4 +260,9 @@ def test_all_real_injection_patches_are_valid_unified_diffs() -> None:
     ]
 
     assert len(patches) == 6
-    assert [(patch.name, result.stderr) for patch, result in zip(patches, results) if result.returncode] == []
+    failures = [
+        (patch.name, result.stderr)
+        for patch, result in zip(patches, results, strict=True)
+        if result.returncode
+    ]
+    assert failures == []

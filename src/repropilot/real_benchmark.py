@@ -4,8 +4,10 @@ import os
 import shutil
 import stat
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Literal
+from types import TracebackType
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -244,9 +246,11 @@ def _git_apply(
 
 def _remove_acquisition_workspace(path: Path) -> None:
     def clear_read_only(
-        function: Callable[[str], object], target: str, _error: BaseException
+        function: Callable[[str], object],
+        target: str,
+        _error: tuple[type[BaseException], BaseException, TracebackType],
     ) -> None:
         os.chmod(target, stat.S_IWRITE)
         function(target)
 
-    shutil.rmtree(path, onexc=clear_read_only)
+    shutil.rmtree(path, onerror=clear_read_only)

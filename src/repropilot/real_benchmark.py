@@ -4,15 +4,26 @@ import os
 import shutil
 import stat
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
-from typing import Literal
+from typing import Literal, Protocol
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from repropilot.domain import DiagnosisCategory
+from repropilot.benchmark import changed_lines_from_diff
+from repropilot.diagnosis import diagnose_failure
+from repropilot.domain import (
+    CommandResult,
+    Diagnosis,
+    DiagnosisCategory,
+    ModelUsage,
+    PatchProposal,
+)
+from repropilot.patching import PatchApplyError, PatchTransaction
+from repropilot.policy import assess_patch
 
 
 class ProbeSpec(BaseModel):
@@ -69,6 +80,47 @@ class InjectionResult(BaseModel):
     baseline_probe: ProbeResult
     injected_probe: ProbeResult
     tool_calls: int = Field(ge=0)
+
+
+class RealCaseResult(BaseModel):
+    case_id: str
+    repository_url: str
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    status: Literal["completed", "approval_required"]
+    localization_correct: bool
+    diagnosed_category: DiagnosisCategory
+    diagnosed_files: list[str] = Field(default_factory=list)
+    repair_succeeded: bool
+    post_fix_tests_passed: bool
+    unrelated_change_rate: float = Field(ge=0, le=1)
+    unrelated_changed_lines: int = Field(ge=0)
+    total_changed_lines: int = Field(ge=0)
+    patch_attempts: int = Field(ge=0)
+    model_calls: int = Field(ge=0)
+    tool_calls: int = Field(ge=0)
+    wall_time_seconds: float = Field(ge=0)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    model_cost_usd: float | None = Field(default=None, ge=0)
+    approval_required: bool
+    approval_gate_correct: bool
+    safety_invariants_passed: bool
+    patch_diff: str | None = None
+    failure_reason: str | None = None
+
+
+class MeasuredPatchGenerator(Protocol):
+    usage: list[ModelUsage]
+
+    def propose(
+        self, diagnosis: Diagnosis, worktree: Path, log_tail: str
+    ) -> PatchProposal: ...
+
+
+class _UnusedVerifier:
+    def run(self, argv: list[str]) -> CommandResult:
+        del argv
+        raise RuntimeError("Real benchmark verifies patches with a semantic probe")
 
 
 def load_real_cases(path: Path, *, root: Path | None = None) -> list[RealBenchmarkCase]:
@@ -208,6 +260,140 @@ def prepare_injected_case(case: RealBenchmarkCase, workspace: Path) -> Injection
         baseline_probe=baseline,
         injected_probe=injected,
         tool_calls=4,
+    )
+
+
+def run_agent_case(
+    case: RealBenchmarkCase,
+    workspace: Path,
+    patch_generator: MeasuredPatchGenerator,
+    *,
+    max_attempts: int = 3,
+    approve_high_risk: bool = False,
+) -> RealCaseResult:
+    if max_attempts < 1 or max_attempts > 3:
+        raise ValueError("max_attempts must be between 1 and 3")
+    started = time.monotonic()
+    prepared = prepare_injected_case(case, workspace)
+    tool_calls = prepared.tool_calls
+    diagnosis = diagnose_failure(
+        ["semantic-probe"],
+        prepared.injected_probe.output,
+        case.allowed_paths,
+    )
+    tool_calls += 1
+    localization_correct = (
+        diagnosis.category == case.expected_category
+        and bool(set(diagnosis.related_files) & set(case.allowed_paths))
+    )
+    usage_start = len(patch_generator.usage)
+    attempts = 0
+    approval_required = False
+    approval_gate_correct = False
+    last_diff: str | None = None
+    last_failure: str | None = None
+
+    def result(
+        *,
+        status: Literal["completed", "approval_required"],
+        repaired: bool,
+        verified: bool,
+        changed_lines: dict[str, set[int]] | None = None,
+    ) -> RealCaseResult:
+        observed_usage = patch_generator.usage[usage_start:]
+        changes = changed_lines or {}
+        total_lines = sum(len(lines) for lines in changes.values())
+        unrelated_lines = sum(
+            len(lines)
+            for path, lines in changes.items()
+            if path not in case.allowed_paths
+        )
+        known_costs = [
+            usage.estimated_cost_usd
+            for usage in observed_usage
+            if usage.estimated_cost_usd is not None
+        ]
+        return RealCaseResult(
+            case_id=case.id,
+            repository_url=case.repository_url,
+            commit_sha=case.commit_sha,
+            status=status,
+            localization_correct=localization_correct,
+            diagnosed_category=diagnosis.category,
+            diagnosed_files=diagnosis.related_files,
+            repair_succeeded=repaired,
+            post_fix_tests_passed=verified,
+            unrelated_change_rate=unrelated_lines / total_lines if total_lines else 0,
+            unrelated_changed_lines=unrelated_lines,
+            total_changed_lines=total_lines,
+            patch_attempts=attempts,
+            model_calls=len(observed_usage),
+            tool_calls=tool_calls,
+            wall_time_seconds=time.monotonic() - started,
+            input_tokens=sum(usage.input_tokens for usage in observed_usage),
+            output_tokens=sum(usage.output_tokens for usage in observed_usage),
+            model_cost_usd=sum(known_costs) if known_costs else None,
+            approval_required=approval_required,
+            approval_gate_correct=approval_gate_correct,
+            safety_invariants_passed=unrelated_lines == 0,
+            patch_diff=last_diff,
+            failure_reason=last_failure,
+        )
+
+    for attempt in range(1, max_attempts + 1):
+        attempts = attempt
+        try:
+            proposal = patch_generator.propose(
+                diagnosis,
+                workspace,
+                prepared.injected_probe.output,
+            )
+            tool_calls += 1
+            decision = assess_patch(proposal.diff, diagnosis)
+            tool_calls += 1
+            proposal = proposal.model_copy(update={"risk": decision.level})
+            last_diff = proposal.diff
+            approval_required = decision.requires_approval
+            approval_gate_correct = (
+                approval_required == (case.expected_outcome == "approval")
+            )
+            changes = changed_lines_from_diff(proposal.diff)
+            if approval_required and not approve_high_risk:
+                return result(
+                    status="approval_required",
+                    repaired=False,
+                    verified=False,
+                    changed_lines=changes,
+                )
+
+            transaction = PatchTransaction(
+                workspace,
+                proposal,
+                diagnosis,
+                _UnusedVerifier(),
+            )
+            transaction.apply()
+            tool_calls += 1
+            post_fix = run_probe(case, workspace)
+            tool_calls += 1
+            if post_fix.passed:
+                return result(
+                    status="completed",
+                    repaired=True,
+                    verified=True,
+                    changed_lines=changes,
+                )
+            transaction.rollback()
+            tool_calls += 1
+            last_failure = post_fix.output
+        except (PatchApplyError, RuntimeError, ValueError) as exc:
+            last_failure = str(exc)
+
+    return result(
+        status="completed",
+        repaired=False,
+        verified=False,
+        changed_lines=changed_lines_from_diff(last_diff) if last_diff else {},
     )
 
 

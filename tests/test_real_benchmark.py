@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 import repropilot.real_benchmark as real_benchmark
+from repropilot.domain import ModelUsage, PatchProposal, RiskLevel
 from repropilot.real_benchmark import (
     AcquisitionError,
     InjectionError,
@@ -15,6 +16,7 @@ from repropilot.real_benchmark import (
     acquire_repository,
     load_real_cases,
     prepare_injected_case,
+    run_agent_case,
     run_probe,
 )
 
@@ -54,6 +56,58 @@ def _case(repository: str, commit_sha: str) -> RealBenchmarkCase:
             "failure_message": "CONFIGURATION ERROR in train.py",
         },
     )
+
+
+class FixedPatchGenerator:
+    def __init__(self, proposal: PatchProposal) -> None:
+        self.proposal = proposal
+        self.usage: list[ModelUsage] = []
+
+    def propose(self, *_args: object) -> PatchProposal:
+        self.usage.append(
+            ModelUsage(
+                model="test-model",
+                input_tokens=20,
+                output_tokens=10,
+                duration_seconds=0.1,
+                estimated_cost_usd=None,
+            )
+        )
+        return self.proposal
+
+
+def _repair_proposal(*, replacement: str = "LEARNING_RATE = 0.1") -> PatchProposal:
+    return PatchProposal(
+        diff=(
+            "diff --git a/train.py b/train.py\n"
+            "--- a/train.py\n"
+            "+++ b/train.py\n"
+            "@@ -1 +1 @@\n"
+            "-LEARNING_RATE = 0.001\n"
+            f"+{replacement}\n"
+        ),
+        explanation="Restore the documented learning rate.",
+        risk=RiskLevel.LOW,
+        targeted_test=["python", "-m", "pytest", "-q"],
+        allowed_paths=["train.py"],
+    )
+
+
+def _injected_workspace(tmp_path: Path) -> tuple[RealBenchmarkCase, Path]:
+    workspace = tmp_path / "workspace"
+    commit_sha = _commit_repository(workspace)
+    injection = tmp_path / "fault.patch"
+    injection.write_text(
+        "diff --git a/train.py b/train.py\n"
+        "--- a/train.py\n"
+        "+++ b/train.py\n"
+        "@@ -1 +1 @@\n"
+        "-LEARNING_RATE = 0.1\n"
+        "+LEARNING_RATE = 0.001\n",
+        encoding="utf-8",
+    )
+    case = _case(str(workspace), commit_sha).model_copy(update={"injection": injection})
+    return case, workspace
 
 
 def test_real_case_rejects_floating_commit_reference() -> None:
@@ -266,3 +320,55 @@ def test_all_real_injection_patches_are_valid_unified_diffs() -> None:
         if result.returncode
     ]
     assert failures == []
+
+
+def test_agent_case_localizes_repairs_and_records_evidence(tmp_path: Path) -> None:
+    case, workspace = _injected_workspace(tmp_path)
+    generator = FixedPatchGenerator(_repair_proposal())
+
+    result = run_agent_case(case, workspace, generator)
+
+    assert result.status == "completed"
+    assert result.localization_correct is True
+    assert result.diagnosed_category == "configuration"
+    assert result.diagnosed_files == ["train.py"]
+    assert result.repair_succeeded is True
+    assert result.post_fix_tests_passed is True
+    assert result.unrelated_change_rate == 0
+    assert result.patch_attempts == 1
+    assert result.model_calls == 1
+    assert result.input_tokens == 20
+    assert result.output_tokens == 10
+    assert result.model_cost_usd is None
+    assert result.patch_diff == _repair_proposal().diff
+    assert run_probe(case, workspace).passed is True
+
+
+def test_agent_case_stops_at_correct_high_risk_approval_gate(tmp_path: Path) -> None:
+    case, workspace = _injected_workspace(tmp_path)
+    case = case.model_copy(
+        update={"expected_category": "metric", "expected_outcome": "approval"}
+    )
+    case.probe.failure_message = "METRIC ERROR in train.py: wrong averaging behavior"
+    generator = FixedPatchGenerator(_repair_proposal())
+
+    result = run_agent_case(case, workspace, generator, approve_high_risk=False)
+
+    assert result.status == "approval_required"
+    assert result.approval_required is True
+    assert result.approval_gate_correct is True
+    assert result.repair_succeeded is False
+    assert "LEARNING_RATE = 0.001" in (workspace / "train.py").read_text(encoding="utf-8")
+
+
+def test_agent_case_rolls_back_failed_patch_before_next_attempt(tmp_path: Path) -> None:
+    case, workspace = _injected_workspace(tmp_path)
+    generator = FixedPatchGenerator(_repair_proposal(replacement="LEARNING_RATE = 0.2"))
+
+    result = run_agent_case(case, workspace, generator, max_attempts=1)
+
+    assert result.status == "completed"
+    assert result.repair_succeeded is False
+    assert result.post_fix_tests_passed is False
+    assert result.patch_attempts == 1
+    assert "LEARNING_RATE = 0.001" in (workspace / "train.py").read_text(encoding="utf-8")

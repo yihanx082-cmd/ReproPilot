@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import subprocess
+import stat
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+import repropilot.real_benchmark as real_benchmark
 from repropilot.real_benchmark import (
     AcquisitionError,
+    InjectionError,
     RealBenchmarkCase,
     acquire_repository,
     load_real_cases,
+    prepare_injected_case,
+    run_probe,
 )
 
 
@@ -20,7 +25,8 @@ def _commit_repository(path: Path) -> str:
     subprocess.run(["git", "config", "user.email", "benchmark@example.com"], cwd=path, check=True)
     subprocess.run(["git", "config", "user.name", "Benchmark"], cwd=path, check=True)
     (path / "train.py").write_text("LEARNING_RATE = 0.1\n", encoding="utf-8")
-    subprocess.run(["git", "add", "train.py"], cwd=path, check=True)
+    (path / "unused-weights.bin").write_bytes(b"not needed by benchmark")
+    subprocess.run(["git", "add", "train.py", "unused-weights.bin"], cwd=path, check=True)
     subprocess.run(["git", "commit", "-qm", "baseline"], cwd=path, check=True)
     return subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -84,8 +90,9 @@ def test_acquisition_checks_out_exact_pinned_commit(tmp_path: Path) -> None:
     assert result.workspace == destination.resolve()
     assert result.commit_sha == commit_sha
     assert result.attempts == 1
-    assert result.tool_calls == 3
+    assert result.tool_calls == 5
     assert (destination / "train.py").read_text(encoding="utf-8") == "LEARNING_RATE = 0.1\n"
+    assert (destination / "unused-weights.bin").exists() is False
 
 
 def test_acquisition_failure_is_separate_from_agent_failure(tmp_path: Path) -> None:
@@ -97,3 +104,160 @@ def test_acquisition_failure_is_separate_from_agent_failure(tmp_path: Path) -> N
 
     assert captured.value.attempts == 2
     assert "repository acquisition failed" in str(captured.value).lower()
+
+
+def test_acquisition_timeout_is_classified_and_retried(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    def time_out(_argv: list[str]) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        raise subprocess.TimeoutExpired(["git", "clone"], 120)
+
+    monkeypatch.setattr(real_benchmark, "_git", time_out)
+    case = _case(str(tmp_path / "source"), "a" * 40)
+
+    with pytest.raises(AcquisitionError, match="timed out") as captured:
+        acquire_repository(case, tmp_path / "checkout", retries=2)
+
+    assert captured.value.attempts == 2
+    assert calls == 2
+
+
+def test_acquisition_refuses_to_overwrite_preexisting_destination(tmp_path: Path) -> None:
+    destination = tmp_path / "checkout"
+    destination.mkdir()
+    protected = destination / "user-file.txt"
+    protected.write_text("keep me", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        acquire_repository(
+            _case(str(tmp_path / "source"), "a" * 40), destination, retries=1
+        )
+
+    assert protected.read_text(encoding="utf-8") == "keep me"
+
+
+def test_retry_removes_read_only_git_residue_created_by_failed_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+    destination = tmp_path / "checkout"
+
+    def fail_with_residue(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            destination.mkdir()
+            residue = destination / "pack.idx"
+            residue.write_bytes(b"partial")
+            residue.chmod(stat.S_IREAD)
+            raise subprocess.TimeoutExpired(["git", *argv], 120)
+        return subprocess.CompletedProcess(["git", *argv], 1, "", "network failed")
+
+    monkeypatch.setattr(real_benchmark, "_git", fail_with_residue)
+
+    with pytest.raises(AcquisitionError, match="network failed"):
+        acquire_repository(
+            _case(str(tmp_path / "source"), "a" * 40), destination, retries=2
+        )
+
+    assert destination.exists() is False
+
+
+def test_probe_checks_source_without_importing_or_executing_it(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    marker = tmp_path / "executed.txt"
+    (workspace / "train.py").write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('executed')\n"
+        "LEARNING_RATE = 0.1\n",
+        encoding="utf-8",
+    )
+    case = _case(str(workspace), "b" * 40)
+
+    result = run_probe(case, workspace)
+
+    assert result.passed is True
+    assert result.related_file == "train.py"
+    assert marker.exists() is False
+
+
+def test_prepare_injected_case_proves_baseline_passes_and_fault_fails(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    commit_sha = _commit_repository(workspace)
+    injection = tmp_path / "fault.patch"
+    injection.write_text(
+        "diff --git a/train.py b/train.py\n"
+        "--- a/train.py\n"
+        "+++ b/train.py\n"
+        "@@ -1 +1 @@\n"
+        "-LEARNING_RATE = 0.1\n"
+        "+LEARNING_RATE = 0.001\n",
+        encoding="utf-8",
+    )
+    case = _case(str(workspace), commit_sha).model_copy(update={"injection": injection})
+
+    result = prepare_injected_case(case, workspace)
+
+    assert result.baseline_probe.passed is True
+    assert result.injected_probe.passed is False
+    assert result.injected_probe.output == "CONFIGURATION ERROR in train.py"
+    assert result.tool_calls == 4
+    assert "LEARNING_RATE = 0.001" in (workspace / "train.py").read_text(encoding="utf-8")
+
+
+def test_prepare_injected_case_rejects_fault_that_does_not_break_probe(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    commit_sha = _commit_repository(workspace)
+    injection = tmp_path / "no-op.patch"
+    injection.write_text(
+        "diff --git a/train.py b/train.py\n"
+        "--- a/train.py\n"
+        "+++ b/train.py\n"
+        "@@ -1 +1,2 @@\n"
+        " LEARNING_RATE = 0.1\n"
+        "+COMMENT = 'unrelated'\n",
+        encoding="utf-8",
+    )
+    case = _case(str(workspace), commit_sha).model_copy(update={"injection": injection})
+
+    with pytest.raises(InjectionError, match="did not break"):
+        prepare_injected_case(case, workspace)
+
+
+def test_manifest_failure_messages_drive_expected_diagnosis_categories() -> None:
+    from repropilot.diagnosis import diagnose_failure
+
+    root = Path(__file__).parents[1]
+    cases = load_real_cases(root / "benchmark" / "real-projects.yaml", root=root)
+
+    observed = {
+        diagnose_failure(["probe"], case.probe.failure_message, case.allowed_paths).category
+        for case in cases
+    }
+
+    assert observed == {case.expected_category for case in cases}
+
+
+def test_all_real_injection_patches_are_valid_unified_diffs() -> None:
+    root = Path(__file__).parents[1]
+    patches = sorted((root / "benchmark" / "real-injections").glob("*.patch"))
+
+    results = [
+        subprocess.run(
+            ["git", "apply", "--numstat", str(patch)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        for patch in patches
+    ]
+
+    assert len(patches) == 6
+    assert [(patch.name, result.stderr) for patch, result in zip(patches, results) if result.returncode] == []

@@ -6,6 +6,7 @@ import stat
 import subprocess
 import time
 from collections.abc import Callable
+from html import escape
 from pathlib import Path
 from types import TracebackType
 from typing import Literal, Protocol
@@ -86,7 +87,13 @@ class RealCaseResult(BaseModel):
     case_id: str
     repository_url: str
     commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    status: Literal["completed", "approval_required"]
+    status: Literal[
+        "completed",
+        "approval_required",
+        "acquisition_failed",
+        "injection_failed",
+        "model_failed",
+    ]
     localization_correct: bool
     diagnosed_category: DiagnosisCategory
     diagnosed_files: list[str] = Field(default_factory=list)
@@ -107,6 +114,28 @@ class RealCaseResult(BaseModel):
     safety_invariants_passed: bool
     patch_diff: str | None = None
     failure_reason: str | None = None
+
+
+class RealBenchmarkSummary(BaseModel):
+    mode: str
+    case_count: int = Field(ge=0)
+    evaluated_case_count: int = Field(ge=0)
+    infrastructure_failure_count: int = Field(ge=0)
+    pending_approval_count: int = Field(ge=0)
+    acquisition_success_rate: float = Field(ge=0, le=1)
+    benchmark_completion_rate: float = Field(ge=0, le=1)
+    error_localization_rate: float = Field(ge=0, le=1)
+    repair_success_rate: float = Field(ge=0, le=1)
+    post_fix_test_pass_rate: float = Field(ge=0, le=1)
+    unrelated_change_rate: float = Field(ge=0, le=1)
+    mean_patch_attempts: float = Field(ge=0)
+    total_model_calls: int = Field(ge=0)
+    total_tool_calls: int = Field(ge=0)
+    total_wall_time_seconds: float = Field(ge=0)
+    total_input_tokens: int = Field(ge=0)
+    total_output_tokens: int = Field(ge=0)
+    total_model_cost_usd: float | None = Field(default=None, ge=0)
+    safety_invariants_passed: bool
 
 
 class MeasuredPatchGenerator(Protocol):
@@ -395,6 +424,179 @@ def run_agent_case(
         verified=False,
         changed_lines=changed_lines_from_diff(last_diff) if last_diff else {},
     )
+
+
+def infrastructure_failure_result(
+    case: RealBenchmarkCase,
+    *,
+    status: Literal["acquisition_failed", "injection_failed"],
+    reason: str,
+    wall_time_seconds: float,
+) -> RealCaseResult:
+    return RealCaseResult(
+        case_id=case.id,
+        repository_url=case.repository_url,
+        commit_sha=case.commit_sha,
+        status=status,
+        localization_correct=False,
+        diagnosed_category=DiagnosisCategory.UNKNOWN,
+        diagnosed_files=[],
+        repair_succeeded=False,
+        post_fix_tests_passed=False,
+        unrelated_change_rate=0,
+        unrelated_changed_lines=0,
+        total_changed_lines=0,
+        patch_attempts=0,
+        model_calls=0,
+        tool_calls=0,
+        wall_time_seconds=wall_time_seconds,
+        input_tokens=0,
+        output_tokens=0,
+        model_cost_usd=None,
+        approval_required=False,
+        approval_gate_correct=False,
+        safety_invariants_passed=True,
+        failure_reason=reason,
+    )
+
+
+def aggregate_real_results(
+    results: list[RealCaseResult], *, mode: str
+) -> RealBenchmarkSummary:
+    case_count = len(results)
+    infrastructure = [
+        result
+        for result in results
+        if result.status in {"acquisition_failed", "injection_failed"}
+    ]
+    evaluated = [
+        result for result in results if result.status in {"completed", "model_failed"}
+    ]
+    pending = [result for result in results if result.status == "approval_required"]
+    case_denominator = case_count or 1
+    evaluated_denominator = len(evaluated) or 1
+    total_lines = sum(result.total_changed_lines for result in evaluated)
+    unrelated_lines = sum(result.unrelated_changed_lines for result in evaluated)
+    known_costs = [
+        result.model_cost_usd
+        for result in results
+        if result.model_cost_usd is not None
+    ]
+    return RealBenchmarkSummary(
+        mode=mode,
+        case_count=case_count,
+        evaluated_case_count=len(evaluated),
+        infrastructure_failure_count=len(infrastructure),
+        pending_approval_count=len(pending),
+        acquisition_success_rate=(
+            case_count
+            - sum(result.status == "acquisition_failed" for result in results)
+        )
+        / case_denominator,
+        benchmark_completion_rate=len(evaluated) / case_denominator,
+        error_localization_rate=(
+            sum(result.localization_correct for result in evaluated)
+            / evaluated_denominator
+        ),
+        repair_success_rate=(
+            sum(result.repair_succeeded for result in evaluated)
+            / evaluated_denominator
+        ),
+        post_fix_test_pass_rate=(
+            sum(result.post_fix_tests_passed for result in evaluated)
+            / evaluated_denominator
+        ),
+        unrelated_change_rate=unrelated_lines / total_lines if total_lines else 0,
+        mean_patch_attempts=(
+            sum(result.patch_attempts for result in evaluated) / evaluated_denominator
+        ),
+        total_model_calls=sum(result.model_calls for result in results),
+        total_tool_calls=sum(result.tool_calls for result in results),
+        total_wall_time_seconds=sum(result.wall_time_seconds for result in results),
+        total_input_tokens=sum(result.input_tokens for result in results),
+        total_output_tokens=sum(result.output_tokens for result in results),
+        total_model_cost_usd=sum(known_costs) if known_costs else None,
+        safety_invariants_passed=bool(evaluated)
+        and all(result.safety_invariants_passed for result in evaluated),
+    )
+
+
+def render_real_benchmark_markdown(
+    summary: RealBenchmarkSummary, results: list[RealCaseResult]
+) -> str:
+    cost = (
+        f"${summary.total_model_cost_usd:.4f}"
+        if summary.total_model_cost_usd is not None
+        else "unknown"
+    )
+    lines = [
+        "# ReproPilot Real-Project Agent Benchmark",
+        "",
+        "> Infrastructure failures are excluded from Agent localization and repair rates; "
+        "they remain visible in acquisition and completion metrics.",
+        "",
+        "| Metric | Value |",
+        "|---|---:|",
+        f"| Cases | {summary.case_count} |",
+        f"| Evaluated Agent cases | {summary.evaluated_case_count} |",
+        f"| Infrastructure failures | {summary.infrastructure_failure_count} |",
+        f"| Acquisition success rate | {summary.acquisition_success_rate:.1%} |",
+        f"| Benchmark completion rate | {summary.benchmark_completion_rate:.1%} |",
+        f"| Error localization rate | {summary.error_localization_rate:.1%} |",
+        f"| Repair success rate | {summary.repair_success_rate:.1%} |",
+        f"| Post-fix test pass rate | {summary.post_fix_test_pass_rate:.1%} |",
+        f"| Unrelated changed-line rate | {summary.unrelated_change_rate:.1%} |",
+        f"| Model calls | {summary.total_model_calls} |",
+        f"| Tool calls | {summary.total_tool_calls} |",
+        f"| Tokens | {summary.total_input_tokens + summary.total_output_tokens} |",
+        f"| Model cost | {cost} |",
+        "",
+        "| Case | Status | Localized | Repaired | Tests |",
+        "|---|---|---:|---:|---:|",
+    ]
+    lines.extend(
+        "| "
+        + " | ".join(
+            [
+                result.case_id,
+                result.status,
+                "yes" if result.localization_correct else "no",
+                "yes" if result.repair_succeeded else "no",
+                "yes" if result.post_fix_tests_passed else "no",
+            ]
+        )
+        + " |"
+        for result in results
+    )
+    return "\n".join(lines) + "\n"
+
+
+def render_real_benchmark_html(
+    summary: RealBenchmarkSummary, results: list[RealCaseResult]
+) -> str:
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(result.case_id)}</td>"
+        f"<td>{escape(result.status)}</td>"
+        f"<td>{'yes' if result.localization_correct else 'no'}</td>"
+        f"<td>{'yes' if result.repair_succeeded else 'no'}</td>"
+        f"<td>{'yes' if result.post_fix_tests_passed else 'no'}</td>"
+        "</tr>"
+        for result in results
+    )
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ReproPilot Benchmark</title>
+<style>body{{font:16px system-ui;max-width:960px;margin:40px auto;padding:0 20px;color:#172033}}
+table{{border-collapse:collapse;width:100%;margin:20px 0}}
+th,td{{border:1px solid #ccd3df;padding:8px;text-align:left}}
+.metric{{display:inline-block;padding:12px;margin:4px;background:#eef3ff;border-radius:8px}}</style></head>
+<body><h1>ReproPilot Real-Project Agent Benchmark</h1>
+<p>Infrastructure failures are excluded from Agent rates and reported separately.</p>
+<div class="metric">Repair success rate: {summary.repair_success_rate:.1%}</div>
+<div class="metric">Localization rate: {summary.error_localization_rate:.1%}</div>
+<div class="metric">Completion rate: {summary.benchmark_completion_rate:.1%}</div>
+<table><thead><tr><th>Case</th><th>Status</th><th>Localized</th><th>Repaired</th><th>Tests</th></tr></thead>
+<tbody>{rows}</tbody></table></body></html>"""
 
 
 def _git(argv: list[str]) -> subprocess.CompletedProcess[str]:

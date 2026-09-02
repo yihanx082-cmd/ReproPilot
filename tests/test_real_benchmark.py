@@ -13,9 +13,14 @@ from repropilot.real_benchmark import (
     AcquisitionError,
     InjectionError,
     RealBenchmarkCase,
+    RealCaseResult,
     acquire_repository,
+    aggregate_real_results,
+    infrastructure_failure_result,
     load_real_cases,
     prepare_injected_case,
+    render_real_benchmark_html,
+    render_real_benchmark_markdown,
     run_agent_case,
     run_probe,
 )
@@ -372,3 +377,74 @@ def test_agent_case_rolls_back_failed_patch_before_next_attempt(tmp_path: Path) 
     assert result.post_fix_tests_passed is False
     assert result.patch_attempts == 1
     assert "LEARNING_RATE = 0.001" in (workspace / "train.py").read_text(encoding="utf-8")
+
+
+def _successful_real_result(case_id: str = "success") -> RealCaseResult:
+    return RealCaseResult(
+        case_id=case_id,
+        repository_url="https://github.com/example/project.git",
+        commit_sha="a" * 40,
+        status="completed",
+        localization_correct=True,
+        diagnosed_category="configuration",
+        diagnosed_files=["train.py"],
+        repair_succeeded=True,
+        post_fix_tests_passed=True,
+        unrelated_change_rate=0,
+        unrelated_changed_lines=0,
+        total_changed_lines=2,
+        patch_attempts=1,
+        model_calls=1,
+        tool_calls=9,
+        wall_time_seconds=2.5,
+        input_tokens=100,
+        output_tokens=20,
+        model_cost_usd=None,
+        approval_required=False,
+        approval_gate_correct=True,
+        safety_invariants_passed=True,
+        patch_diff="diff --git a/train.py b/train.py\n",
+    )
+
+
+def test_real_summary_excludes_infrastructure_failures_from_agent_rates() -> None:
+    failed_case = _case("https://github.com/example/missing.git", "b" * 40)
+    acquisition_failure = infrastructure_failure_result(
+        failed_case,
+        status="acquisition_failed",
+        reason="TLS timeout",
+        wall_time_seconds=120,
+    )
+
+    summary = aggregate_real_results(
+        [_successful_real_result(), acquisition_failure], mode="real_agent"
+    )
+
+    assert summary.case_count == 2
+    assert summary.evaluated_case_count == 1
+    assert summary.infrastructure_failure_count == 1
+    assert summary.acquisition_success_rate == 0.5
+    assert summary.benchmark_completion_rate == 0.5
+    assert summary.error_localization_rate == 1
+    assert summary.repair_success_rate == 1
+    assert summary.post_fix_test_pass_rate == 1
+    assert summary.total_model_calls == 1
+    assert summary.total_input_tokens == 100
+    assert summary.total_output_tokens == 20
+    assert summary.total_model_cost_usd is None
+
+
+def test_real_reports_label_evidence_and_denominators_honestly() -> None:
+    results = [_successful_real_result("config-case")]
+    summary = aggregate_real_results(results, mode="real_agent")
+
+    markdown = render_real_benchmark_markdown(summary, results)
+    html = render_real_benchmark_html(summary, results)
+
+    assert "Real-Project Agent Benchmark" in markdown
+    assert "Infrastructure failures are excluded" in markdown
+    assert "config-case" in markdown
+    assert "unknown" in markdown
+    assert "<!doctype html>" in html.casefold()
+    assert "config-case" in html
+    assert "Repair success rate" in html

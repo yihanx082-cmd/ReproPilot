@@ -4,7 +4,7 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from repropilot.domain import EvidenceEvent, RunRequest, RunStatus
@@ -45,10 +45,27 @@ class ArtifactStore:
             if line
         ]
 
+    def read_metadata(self) -> dict[str, Any]:
+        value = json.loads(self.run_path.read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError("run.json must contain a JSON object")
+        return cast(dict[str, Any], value)
+
+    def update_metadata(self, **changes: Any) -> None:
+        metadata = self.read_metadata()
+        metadata.update(changes)
+        self._write_json_atomically(self.run_path, metadata)
+
     def write_json_artifact(self, filename: str, value: Any) -> Path:
         path = self.run_dir / filename
         self._write_json_atomically(path, value)
         return path
+
+    def read_metadata_from(self, filename: str) -> dict[str, Any]:
+        value = json.loads((self.run_dir / filename).read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError(f"{filename} must contain a JSON object")
+        return cast(dict[str, Any], value)
 
     @staticmethod
     def _write_json_atomically(path: Path, value: object) -> None:

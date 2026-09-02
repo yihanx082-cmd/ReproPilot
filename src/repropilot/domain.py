@@ -5,7 +5,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field, JsonValue, model_validator
 
 
 class DatasetRequest(BaseModel):
@@ -34,6 +34,27 @@ class RunRequest(BaseModel):
 
 class RunStatus(StrEnum):
     CREATED = "CREATED"
+    RUNNING = "RUNNING"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    REJECTED = "REJECTED"
+    TIMED_OUT = "TIMED_OUT"
+
+
+class RunState(StrEnum):
+    INGEST = "INGEST"
+    AUDIT = "AUDIT"
+    BUILD = "BUILD"
+    SMOKE_RUN = "SMOKE_RUN"
+    DIAGNOSE = "DIAGNOSE"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
+    APPLY_PATCH = "APPLY_PATCH"
+    VERIFY = "VERIFY"
+    ROLLBACK = "ROLLBACK"
+    COMPARE = "COMPARE"
+    SCORE = "SCORE"
+    REPORT = "REPORT"
 
 
 class EventKind(StrEnum):
@@ -93,3 +114,187 @@ class ModelUsage(BaseModel):
 class PaperExtraction(BaseModel):
     spec: PaperSpec
     usage: ModelUsage
+
+
+RepoExtractor = Literal["yaml", "json", "toml", "python_ast", "readme"]
+
+
+class RepoFact(BaseModel):
+    field: str = Field(min_length=1)
+    value: JsonValue
+    source_path: str = Field(min_length=1)
+    line_start: int = Field(ge=1)
+    extractor: RepoExtractor
+
+
+class FindingStatus(StrEnum):
+    MATCH = "match"
+    MISMATCH = "mismatch"
+    UNKNOWN = "unknown"
+
+
+class FindingSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlignmentFinding(BaseModel):
+    field: str = Field(min_length=1)
+    paper_claim: PaperClaim | None = None
+    repo_fact: RepoFact | None = None
+    status: FindingStatus
+    severity: FindingSeverity
+    explanation: str = Field(min_length=1)
+
+
+class CommandResult(BaseModel):
+    exit_code: int
+    stdout_path: Path
+    stderr_path: Path
+    duration_seconds: float = Field(ge=0)
+    timed_out: bool = False
+    argv: list[str] = Field(default_factory=list)
+    image_digest: str | None = None
+    dockerfile_sha256: str | None = None
+
+
+class DiagnosisCategory(StrEnum):
+    DEPENDENCY = "dependency"
+    PATH = "path"
+    CONFIGURATION = "configuration"
+    CUDA_RUNTIME = "cuda_runtime"
+    DATA = "data"
+    METRIC = "metric"
+    UNKNOWN = "unknown"
+
+
+class Diagnosis(BaseModel):
+    category: DiagnosisCategory
+    root_cause: str = Field(min_length=1)
+    evidence: list[str] = Field(min_length=1)
+    related_files: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=1)
+
+
+class RiskLevel(StrEnum):
+    LOW = "low"
+    HIGH = "high"
+
+
+class PatchProposal(BaseModel):
+    diff: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+    risk: RiskLevel
+    targeted_test: list[str] = Field(min_length=1)
+    allowed_paths: list[str] = Field(min_length=1)
+
+
+class ApprovalDecision(BaseModel):
+    patch_id: str = Field(min_length=1)
+    patch_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved: bool
+    reason: str | None = None
+
+
+class RunSummary(BaseModel):
+    run_dir: Path
+    status: RunStatus
+    states: list[RunState]
+    attempts: int = Field(ge=0)
+    reason: str | None = None
+
+
+class EvidenceStatus(StrEnum):
+    VERIFIED = "verified"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+class ReproductionLabel(StrEnum):
+    REPRODUCED = "REPRODUCED"
+    PARTIAL = "PARTIAL"
+    PROVISIONAL_SMOKE_RUN = "PROVISIONAL_SMOKE_RUN"
+    NOT_REPRODUCED = "NOT_REPRODUCED"
+
+
+class DimensionEvidence(BaseModel):
+    status: EvidenceStatus
+    evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_evidence_for_earned_status(self) -> DimensionEvidence:
+        if self.status in {EvidenceStatus.VERIFIED, EvidenceStatus.PARTIAL} and not self.evidence:
+            raise ValueError("verified or partial evidence requires at least one artifact ID")
+        return self
+
+
+class MetricComparison(BaseModel):
+    name: str = Field(min_length=1)
+    paper_value: float
+    run_values: list[float] = Field(min_length=1)
+    delta: float
+    mean: float
+    std: float = Field(ge=0)
+    comparable: bool
+    evidence: list[str] = Field(default_factory=list)
+
+
+class ScoreDimension(BaseModel):
+    name: str = Field(min_length=1)
+    weight: int = Field(gt=0)
+    earned: float = Field(ge=0)
+    status: EvidenceStatus
+    evidence: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_earned_score(self) -> ScoreDimension:
+        if self.earned > self.weight:
+            raise ValueError("earned score cannot exceed dimension weight")
+        if self.earned > 0 and not self.evidence:
+            raise ValueError("earned score requires at least one artifact ID")
+        return self
+
+
+class RepairAttempt(BaseModel):
+    diagnosis: Diagnosis | None = None
+    patch: PatchProposal | None = None
+    approval: ApprovalDecision | None = None
+    test_result: CommandResult | None = None
+
+
+class EvidenceBundle(BaseModel):
+    environment: DimensionEvidence
+    data: DimensionEvidence
+    configuration: DimensionEvidence
+    metrics: DimensionEvidence
+    random_seeds: DimensionEvidence
+    result_proximity: DimensionEvidence
+    external_dependencies: DimensionEvidence
+    metric_comparisons: list[MetricComparison] = Field(default_factory=list)
+    execution_succeeded: bool = True
+    evidence_complete: bool = True
+    dataset_subset: bool = False
+    epoch_count_differs: bool = False
+    model_differs: bool = False
+    status: RunStatus | None = None
+    terminal_reason: str | None = None
+    paper_source: str | None = None
+    repository_source: str | None = None
+    dataset_source: str | None = None
+    alignment_findings: list[AlignmentFinding] = Field(default_factory=list)
+    commands: list[list[str]] = Field(default_factory=list)
+    repair_attempts: list[RepairAttempt] = Field(default_factory=list)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    model_usage: list[ModelUsage] = Field(default_factory=list)
+    unresolved_risks: list[str] = Field(default_factory=list)
+
+
+class ReproScore(BaseModel):
+    total: float = Field(ge=0, le=100)
+    label: ReproductionLabel
+    dimensions: list[ScoreDimension]
+    metric_comparisons: list[MetricComparison]
+    comparable: bool
+    reasons: list[str] = Field(default_factory=list)

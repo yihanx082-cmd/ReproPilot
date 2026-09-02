@@ -20,6 +20,8 @@ data/
 datasets/
 models/
 weights/
+!benchmark/fixtures/yaml_project/data/
+!benchmark/fixtures/yaml_project/data/synthetic.txt
 *.pt
 *.pth
 *.ckpt

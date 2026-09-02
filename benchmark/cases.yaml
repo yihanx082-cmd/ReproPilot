@@ -1,0 +1,43 @@
+cases:
+  - id: missing-dependency
+    fixture: benchmark/fixtures/yaml_project
+    injection: benchmark/injections/missing_dependency.patch
+    expected_category: dependency
+    expected_root_cause: A required Python package is missing.
+    allowed_paths: [train.py]
+    expected_outcome: auto_fix
+  - id: incorrect-dataset-path
+    fixture: benchmark/fixtures/yaml_project
+    injection: benchmark/injections/incorrect_dataset_path.patch
+    expected_category: path
+    expected_root_cause: The configured synthetic dataset path does not exist.
+    allowed_paths: [config.yaml]
+    expected_outcome: auto_fix
+  - id: learning-rate-mismatch
+    fixture: benchmark/fixtures/yaml_project
+    injection: benchmark/injections/learning_rate_mismatch.patch
+    expected_category: configuration
+    expected_root_cause: The configured learning rate differs from the paper claim.
+    allowed_paths: [config.yaml]
+    expected_outcome: auto_fix
+  - id: cuda-only-on-cpu
+    fixture: benchmark/fixtures/argparse_project
+    injection: benchmark/injections/cuda_only.patch
+    expected_category: cuda_runtime
+    expected_root_cause: The default device requires CUDA on a CPU-only runner.
+    allowed_paths: [train.py]
+    expected_outcome: auto_fix
+  - id: micro-instead-of-macro-f1
+    fixture: benchmark/fixtures/argparse_project
+    injection: benchmark/injections/micro_f1.patch
+    expected_category: metric
+    expected_root_cause: The code computes micro-F1 instead of the paper's macro-F1.
+    allowed_paths: [train.py]
+    expected_outcome: approval
+  - id: random-instead-of-group-split
+    fixture: benchmark/fixtures/mixed_project
+    injection: benchmark/injections/random_split.patch
+    expected_category: data
+    expected_root_cause: The code uses a random image split instead of a patient/group split.
+    allowed_paths: [settings.json]
+    expected_outcome: approval

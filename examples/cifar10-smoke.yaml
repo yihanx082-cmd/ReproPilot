@@ -1,0 +1,17 @@
+# Replace these three paths before running. Windows forward slashes avoid YAML escaping.
+paper: D:/ReproPilotDemo/paper.pdf
+repository: D:/ReproPilotDemo/repository
+dataset:
+  name: CIFAR-10-subset
+  path: D:/ReproPilotDemo/data
+command:
+  - python
+  - train.py
+  - --epochs
+  - "1"
+environment:
+  python: "3.11"
+  device: cpu
+limits:
+  wall_time_seconds: 1200
+  max_patch_attempts: 3

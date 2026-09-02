@@ -10,9 +10,9 @@ Recorded on 2026-09-03 with the OpenAI-compatible `deepseek-v4-pro` model.
 
 The evaluator acquired three repositories at exact commits and created six
 disposable workspaces. Each workspace received one hidden fault. The Agent saw
-the failure message and allowed source file, but not the injection patch or
-expected repaired text. Every generated diff passed the local path, size, risk,
-transaction, and post-fix probe checks.
+the failure message, semantic requirement, and allowed source file, but not the
+injection patch or inverse Git diff. Every generated diff passed the local path,
+size, risk, transaction, and post-fix probe checks.
 
 The case definitions and pinned source identities are in
 [`real-projects.yaml`](real-projects.yaml). The runner is
@@ -32,8 +32,8 @@ The case definitions and pinned source identities are in
 | Mean patch attempts | 1.0 |
 | Model calls | 6 |
 | Tool calls | 54 |
-| Input / output tokens | 17,778 / 1,056 |
-| Measured Agent wall time | 70.80 seconds |
+| Input / output tokens | 17,753 / 1,093 |
+| Measured Agent wall time | 54.35 seconds |
 | Model cost | Unknown; the provider response did not include price data |
 | Safety invariants | Passed |
 
@@ -51,7 +51,7 @@ The case definitions and pinned source identities are in
 Raw JSON, per-case diffs, and the HTML report were retained outside Git to
 avoid publishing generated third-party workspaces. The SHA-256 digest of the
 aggregate `benchmark-results.json` is
-`f6eded36a763d7592ed0a51b81e87e3be731d98b25bfe98f7ac722d98dbe48eb`.
+`ed56c4224c53bc2b53327d94b03749a611d7e784ef13b8db680bbab21f0beeb0`.
 
 ## Reproduce the benchmark
 

@@ -25,7 +25,7 @@ cases:
     probe:
       path: train.py
       forbidden_text: "root='./missing-data'"
-      failure_message: "FileNotFoundError in train.py: CIFAR-10 root './missing-data' does not exist; expected './data'"
+      failure_message: "FileNotFoundError in train.py: configured CIFAR-10 root './missing-data' does not exist"
 
   - id: resnet-learning-rate-mismatch
     repository_url: https://github.com/akamaster/pytorch_resnet_cifar10.git
@@ -53,7 +53,7 @@ cases:
     probe:
       path: trainer.py
       required_text: "def accuracy(output, target, topk=(1,)):"
-      failure_message: "METRIC ERROR in trainer.py: Prec@1 uses topk=(5,) instead of topk=(1,)"
+      failure_message: "METRIC ERROR in trainer.py: reported Prec@1 is computed with a top-k setting inconsistent with top-1"
 
   - id: lightning-cuda-fallback
     repository_url: https://github.com/karasawatakumi/pytorch-image-classification.git
@@ -67,7 +67,7 @@ cases:
     probe:
       path: train.py
       required_text: 'return "cpu", None, None'
-      failure_message: "CUDA ERROR in train.py: CPU-only runner selects accelerator='gpu'"
+      failure_message: "CUDA ERROR in train.py: CPU-only runner selects a GPU accelerator"
 
   - id: lightning-validation-shuffle
     repository_url: https://github.com/karasawatakumi/pytorch-image-classification.git
@@ -81,4 +81,4 @@ cases:
     probe:
       path: train.py
       required_text: "shuffle=False,\n            drop_last=False"
-      failure_message: "DATASET ERROR in train.py: validation DataLoader uses shuffle=True; expected deterministic shuffle=False"
+      failure_message: "DATASET ERROR in train.py: validation DataLoader order is nondeterministic"

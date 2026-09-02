@@ -151,7 +151,7 @@ python scripts/run_real_benchmark.py `
   --approve-high-risk
 ```
 
-2026-09-03 的 `deepseek-v4-pro` 基线中，6/6 案例定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,834 tokens。指标与数据类修改均正确经过高风险审批门。完整方法、逐案例结果和证据摘要见 [真实 Agent 基线](benchmark/real-baseline-summary.md)；reference harness 结果见 [确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
+2026-09-03 的 `deepseek-v4-pro` 基线中，6/6 案例定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,846 tokens。指标与数据类修改均正确经过高风险审批门。完整方法、逐案例结果和证据摘要见 [真实 Agent 基线](benchmark/real-baseline-summary.md)；reference harness 结果见 [确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
 
 ## 测试
 
@@ -176,7 +176,7 @@ Docker 可执行文件位置因安装方式而异，可省略 `REPROPILOT_DOCKER
 - 论文解析通常调用模型一次；每次失败最多提出 3 个补丁。
 - 默认总时限 20 分钟，Docker 限制为 2 CPU、2 GB 内存、256 个进程，无网络运行。
 - 真实成本取决于模型价格、论文长度和补丁次数；报告会保存 token、耗时和可获得的成本证据。
-- 六案例 reference 基线不调用模型，开发机墙钟时间约 25 秒；真实 Agent 基线的 6 次模型调用耗时约 71 秒。
+- 六案例 reference 基线不调用模型，开发机墙钟时间约 25 秒；真实 Agent 基线的 6 次模型调用耗时约 54 秒。
 
 ## 威胁模型
 

@@ -11,8 +11,8 @@ inverse patch as its repair policy.
 The first public benchmark uses three small repositories and six independent
 single-fault cases. Every case starts from a fresh checkout of an exact 40-digit
 commit. The evaluator knows the injection patch and expected invariant; the
-repair agent receives only the failing probe output and the implicated source
-file.
+repair agent receives only the failing probe output, semantic requirement, and
+the implicated source file.
 
 | Repository | License | Pinned commit | Cases |
 |---|---|---|---|
@@ -28,9 +28,11 @@ probe is run before injection, after injection, and after repair. The probe uses
 Python AST/text inspection and does not import or execute the untrusted training
 program, download datasets, or require a GPU.
 
-The model does not see the injection patch or the expected repaired text. It sees
-the failure log, diagnosis, and up to three allowed related files. Generated
-patches still pass the existing path, diff, and risk policies.
+The model does not see the injection patch or inverse Git diff. It sees the
+failure log, diagnosis, and up to three allowed related files. A paper/code
+configuration case may include the documented target value because that is the
+evidence being aligned. Generated patches still pass the existing path, diff,
+and risk policies.
 
 ## Outcome states
 

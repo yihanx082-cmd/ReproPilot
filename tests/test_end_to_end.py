@@ -27,6 +27,9 @@ from repropilot.services import DefaultRunServices
 
 
 class FakePaperLLM:
+    def __init__(self) -> None:
+        self.focus: dict[str, object] | None = None
+
     def extract(self, pages: list[Any]) -> PaperExtraction:
         assert "macro-F1 of 0.90" in pages[0].text
         return PaperExtraction(
@@ -58,6 +61,12 @@ class FakePaperLLM:
                 estimated_cost_usd=0,
             ),
         )
+
+    def extract_focused(
+        self, pages: list[Any], focus: dict[str, object]
+    ) -> PaperExtraction:
+        self.focus = focus
+        return self.extract(pages)
 
 
 class FakePatchGenerator:
@@ -148,8 +157,9 @@ def test_missing_dependency_runs_from_pdf_through_patch_and_html_report(tmp_path
         limits={"wall_time_seconds": 60, "max_patch_attempts": 3},
     )
 
+    paper_llm = FakePaperLLM()
     services = DefaultRunServices(
-        paper_llm=FakePaperLLM(),
+        paper_llm=paper_llm,
         patch_generator=FakePatchGenerator(),
         sandbox_factory=lambda worktree, source, dataset, logs, image: LocalFixtureSandbox(
             worktree, logs
@@ -158,6 +168,10 @@ def test_missing_dependency_runs_from_pdf_through_patch_and_html_report(tmp_path
     summary = ReproPilot(tmp_path / "runs", services).run(request)
 
     assert summary.status == RunStatus.SUCCEEDED, summary.reason
+    assert paper_llm.focus == {
+        "dataset": "synthetic",
+        "command": ["python", "train.py"],
+    }
     assert summary.attempts == 1
     assert (source / "train.py").read_bytes() == original
     required = {
@@ -274,7 +288,7 @@ print(f"macro_f1={0.87 + args.seed / 10000:.3f}")
 def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:
     results = [
         PaperResult(
-            metric="Error",
+            metric="test_error",
             value=8.75,
             unit="%",
             evidence_text="ResNet 20 0.27M 8.75",
@@ -282,7 +296,7 @@ def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:
             confidence=0.98,
         ),
         PaperResult(
-            metric="Error",
+            metric="test_error",
             value=7.51,
             unit="%",
             evidence_text="ResNet 32 0.46M 7.51",
@@ -299,3 +313,4 @@ def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:
 
     assert selected == [results[0]]
     assert observed["error"] == pytest.approx(8.27)
+    assert DefaultRunServices._metric_key(selected[0].metric) in observed

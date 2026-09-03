@@ -77,6 +77,35 @@ def test_deepseek_json_mode_validates_a_paper_spec() -> None:
     assert "json" in completions.kwargs["messages"][-1]["content"].casefold()
 
 
+def test_deepseek_paper_focus_is_included_without_becoming_page_evidence() -> None:
+    payload = {
+        "claims": [],
+        "reported_results": [],
+        "unresolved_fields": [],
+    }
+    completions = JsonObjectCompletions(json.dumps(payload))
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    llm = OpenAICompatiblePaperLLM(
+        client,
+        "deepseek-v4-pro",
+        structured_output_mode="json_object",
+    )
+
+    llm.extract_focused(
+        [PaperPage(page=7, text="ResNet 20 0.27M 8.75")],
+        {
+            "dataset": "CIFAR-10",
+            "command": ["python", "trainer.py", "--arch", "resnet20"],
+        },
+    )
+
+    user_message = completions.kwargs["messages"][1]["content"]
+    assert "REPRODUCTION TARGET" in user_message
+    assert '\"dataset\": \"CIFAR-10\"' in user_message
+    assert '\"resnet20\"' in user_message
+    assert user_message.index("REPRODUCTION TARGET") < user_message.index("[PAGE 7]")
+
+
 def test_deepseek_paper_json_retries_one_schema_error() -> None:
     invalid = {
         "claims": [

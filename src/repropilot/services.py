@@ -381,7 +381,15 @@ class DefaultRunServices:
             docker_context=str(context),
             image_tag=image,
         )
-        extract_paper_spec(run_request.paper, self.paper_llm, store=store)
+        extract_paper_spec(
+            run_request.paper,
+            self.paper_llm,
+            store=store,
+            focus={
+                "dataset": run_request.dataset.name,
+                "command": run_request.command,
+            },
+        )
 
     def audit(self, run_request: RunRequest, store: ArtifactStore) -> None:
         spec = PaperSpec.model_validate(store.read_metadata_from("paper_spec.json"))
@@ -984,7 +992,8 @@ class DefaultRunServices:
 
     @staticmethod
     def _metric_key(value: str) -> str:
-        return re.sub(r"[^a-z0-9]", "", value.casefold())
+        key = re.sub(r"[^a-z0-9]", "", value.casefold())
+        return {"testerror": "error"}.get(key, key)
 
     @classmethod
     def _parse_observed_metrics(cls, text: str) -> dict[str, float]:

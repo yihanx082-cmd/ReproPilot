@@ -5,7 +5,7 @@ import re
 import time
 import unicodedata
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import pymupdf
 from openai import OpenAI
@@ -68,7 +68,26 @@ class OpenAICompatiblePaperLLM:
         self.structured_output_mode = structured_output_mode
 
     def extract(self, pages: list[PaperPage]) -> PaperExtraction:
+        return self._extract(pages)
+
+    def extract_focused(
+        self, pages: list[PaperPage], focus: dict[str, object]
+    ) -> PaperExtraction:
+        return self._extract(pages, focus=focus)
+
+    def _extract(
+        self, pages: list[PaperPage], *, focus: dict[str, object] | None = None
+    ) -> PaperExtraction:
         page_text = "\n\n".join(f"[PAGE {page.page}]\n{page.text}" for page in pages)
+        if focus:
+            page_text = (
+                "[REPRODUCTION TARGET]\n"
+                + json.dumps(focus, ensure_ascii=False)
+                + "\nPrioritize claims and reported results that match this target. "
+                "The target is context only; evidence_text must still be copied exactly "
+                "from a numbered paper page.\n\n"
+                + page_text
+            )
         started_at = time.perf_counter()
         input_tokens = 0
         output_tokens = 0
@@ -207,14 +226,26 @@ class StructuredLLM(Protocol):
     def extract(self, pages: list[PaperPage]) -> PaperExtraction: ...
 
 
+@runtime_checkable
+class FocusedStructuredLLM(Protocol):
+    def extract_focused(
+        self, pages: list[PaperPage], focus: dict[str, object]
+    ) -> PaperExtraction: ...
+
+
 def extract_paper_spec(
     pdf_path: Path,
     llm: StructuredLLM,
     *,
     store: ArtifactStore | None = None,
+    focus: dict[str, object] | None = None,
 ) -> PaperSpec:
     pages = _read_pdf_pages(pdf_path)
-    extraction = llm.extract(pages)
+    extraction = (
+        llm.extract_focused(pages, focus)
+        if focus and isinstance(llm, FocusedStructuredLLM)
+        else llm.extract(pages)
+    )
     validated_spec = _validate_claim_evidence(extraction.spec, pages)
 
     if store is not None:

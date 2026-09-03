@@ -314,3 +314,4 @@ def test_metric_selection_matches_architecture_and_derives_error_rate() -> None:
     assert selected == [results[0]]
     assert observed["error"] == pytest.approx(8.27)
     assert DefaultRunServices._metric_key(selected[0].metric) in observed
+    assert DefaultRunServices._metric_key("classification_error") in observed

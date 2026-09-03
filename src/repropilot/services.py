@@ -993,7 +993,10 @@ class DefaultRunServices:
     @staticmethod
     def _metric_key(value: str) -> str:
         key = re.sub(r"[^a-z0-9]", "", value.casefold())
-        return {"testerror": "error"}.get(key, key)
+        return {
+            "classificationerror": "error",
+            "testerror": "error",
+        }.get(key, key)
 
     @classmethod
     def _parse_observed_metrics(cls, text: str) -> dict[str, float]:

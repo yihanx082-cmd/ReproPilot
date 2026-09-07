@@ -32,3 +32,21 @@ def test_metrics_and_usability_are_measurable() -> None:
     assert "4 of 5" in usability
     assert "credibility score" in usability
     assert "model accuracy" in usability
+
+
+def test_competitor_analysis_and_prd_are_bounded() -> None:
+    competitors = (PRODUCT_DOCS / "competitor-analysis.md").read_text(encoding="utf-8")
+    prd = (PRODUCT_DOCS / "prd.md").read_text(encoding="utf-8")
+    assert "Primary sources" in competitors
+    assert "Manual workflow" in competitors
+    assert "Coding agents" in competitors
+    for heading in [
+        "Problem",
+        "Target User",
+        "Requirements",
+        "Non-goals",
+        "Risks",
+        "Acceptance Criteria",
+    ]:
+        assert heading in prd
+    assert "cloud GPU scheduling" in prd

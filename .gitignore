@@ -20,6 +20,8 @@ data/
 datasets/
 models/
 weights/
+!prototype/data/
+!prototype/data/demo-run.json
 !benchmark/fixtures/yaml_project/data/
 !benchmark/fixtures/yaml_project/data/synthetic.txt
 *.pt

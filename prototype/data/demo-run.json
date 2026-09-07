@@ -1,0 +1,152 @@
+{
+  "meta": {
+    "demo": true,
+    "source_label": "Demo evidence from the ResNet-20/CIFAR-10 reproduction run",
+    "evidence_date": "2026-09-03",
+    "notice": "Frozen, sanitized evidence. No training command runs in this prototype."
+  },
+  "task": {
+    "name": "ResNet-20 on CIFAR-10",
+    "paper": "Deep Residual Learning for Image Recognition.pdf",
+    "repository": "https://github.com/akamaster/pytorch_resnet_cifar10",
+    "dataset": "CIFAR-10",
+    "python": "3.11",
+    "device": "cpu",
+    "command": ["python", "trainer.py", "--evaluate"]
+  },
+  "scope": {
+    "comparison_scope": "paper",
+    "estimated_limit": "20 minutes",
+    "claims": [
+      {
+        "field": "model",
+        "paper": "ResNet-20",
+        "code": "resnet20",
+        "status": "match",
+        "evidence": "Paper p. 7; models/resnet.py"
+      },
+      {
+        "field": "dataset",
+        "paper": "CIFAR-10",
+        "code": "CIFAR10",
+        "status": "match",
+        "evidence": "Paper p. 7; trainer.py"
+      },
+      {
+        "field": "reported error",
+        "paper": "8.75%",
+        "code": "top-1 accuracy output",
+        "status": "warning",
+        "evidence": "Paper table 6; evaluation log parser"
+      }
+    ],
+    "unresolved": [
+      "The public checkpoint version cannot be proven identical to the paper's training run.",
+      "This demo evaluates public pretrained weights rather than training three models from scratch."
+    ]
+  },
+  "timeline": [
+    {
+      "id": "ingest",
+      "state": "INGEST",
+      "title": "Paper evidence extracted",
+      "status": "verified",
+      "summary": "Found the CIFAR-10 ResNet-20 result and its page evidence.",
+      "evidence": ["paper_spec.json#reported_results[0]", "Paper page 7: Error 8.75%"]
+    },
+    {
+      "id": "audit",
+      "state": "AUDIT",
+      "title": "Paper and code aligned",
+      "status": "warning",
+      "summary": "Model and dataset match; result representation needs explicit conversion.",
+      "evidence": ["alignment.json#findings", "trainer.py metric output"]
+    },
+    {
+      "id": "build",
+      "state": "BUILD",
+      "title": "Docker environment built",
+      "status": "verified",
+      "summary": "The pinned environment built inside the resource-limited sandbox.",
+      "evidence": ["build-command.json", "Docker image digest sha256:demo-image"]
+    },
+    {
+      "id": "smoke",
+      "state": "SMOKE_RUN",
+      "title": "Minimum run diagnosed",
+      "status": "warning",
+      "summary": "The original repository assumed CUDA and omitted checkpoint metadata used by the evaluator.",
+      "evidence": ["smoke-stderr.log", "diagnosis.json"]
+    },
+    {
+      "id": "repair",
+      "state": "VERIFY",
+      "title": "Compatibility repair verified",
+      "status": "verified",
+      "summary": "CPU compatibility and checkpoint metadata repairs passed targeted tests.",
+      "evidence": ["repair-01.diff", "targeted-test-01.json"]
+    },
+    {
+      "id": "approval",
+      "state": "WAITING_APPROVAL",
+      "title": "Metric semantics need approval",
+      "status": "waiting approval",
+      "summary": "The proposed conversion changes the reported metric from accuracy to error rate.",
+      "evidence": ["illustrative-metric-conversion.diff", "metric-contract-test.json"],
+      "illustrative": true
+    },
+    {
+      "id": "formal",
+      "state": "FORMAL_EXPERIMENT",
+      "title": "Three seeded evaluations completed",
+      "status": "verified",
+      "summary": "Seeds 11, 22 and 33 produced independently recorded evidence.",
+      "evidence": ["formal-seed-11.json", "formal-seed-22.json", "formal-seed-33.json"]
+    },
+    {
+      "id": "report",
+      "state": "REPORT",
+      "title": "Credibility report generated",
+      "status": "verified",
+      "summary": "Evidence credibility is 80/100 with a PARTIAL label.",
+      "evidence": ["score.json", "report.html"]
+    }
+  ],
+  "approval": {
+    "illustrative": true,
+    "patch_id": "demo-metric-semantics-01",
+    "patch_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "risk": "high",
+    "root_cause": "The paper reports error rate while the repository emits top-1 accuracy.",
+    "impact": "The displayed value changes meaning; the underlying predictions are unchanged.",
+    "diff": "- metrics['top1'] = accuracy\n+ metrics['error'] = 100.0 - accuracy",
+    "targeted_test": ["python", "-m", "pytest", "tests/test_metrics.py", "-q"]
+  },
+  "report": {
+    "score": 80,
+    "label": "PARTIAL",
+    "score_explanation": "Evidence completeness and consistency, not model accuracy.",
+    "comparison": {
+      "metric": "Error",
+      "unit": "%",
+      "paper_value": 8.75,
+      "run_values": [8.27, 8.27, 8.27],
+      "observed_mean": 8.27,
+      "observed_std": 0.0,
+      "delta_percentage_points": -0.48
+    },
+    "dimensions": [
+      {"name": "Environment completeness", "weight": 15, "earned": 15, "status": "verified"},
+      {"name": "Data consistency", "weight": 20, "earned": 20, "status": "verified"},
+      {"name": "Configuration consistency", "weight": 20, "earned": 10, "status": "partial"},
+      {"name": "Metric consistency", "weight": 15, "earned": 15, "status": "verified"},
+      {"name": "Random seed completeness", "weight": 10, "earned": 10, "status": "verified"},
+      {"name": "Result proximity", "weight": 15, "earned": 7.5, "status": "partial"},
+      {"name": "External dependency availability", "weight": 5, "earned": 2.5, "status": "partial"}
+    ],
+    "unresolved_risks": [
+      "Public pretrained weights were evaluated instead of three from-scratch training runs.",
+      "The exact checkpoint provenance and unpublished augmentation details remain unavailable."
+    ]
+  }
+}

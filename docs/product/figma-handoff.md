@@ -84,4 +84,3 @@
 - Execution Timeline 保持三栏信息结构；
 - 文案、数值和状态与 `prototype/data/demo-run.json` 一致；
 - 与 `assets/prototype-timeline.png`、`assets/prototype-report.png` 在 1440 × 900 下进行视觉对照。
-

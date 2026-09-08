@@ -5,6 +5,8 @@ import test from "node:test";
 import {
   approvePatch,
   createInitialState,
+  getDemoStartStep,
+  getDemoStatusMessage,
   getVisibleScreen,
   rejectPatch,
   selectStage,
@@ -88,4 +90,17 @@ test("visible screens are limited to the product journey", () => {
     assert.equal(getVisibleScreen({ ...state, step: screen }), screen);
   }
   assert.throws(() => getVisibleScreen({ ...state, step: "settings" }), /Unknown screen/);
+});
+
+test("demo deep links only open supported review screens", () => {
+  assert.equal(getDemoStartStep("?screen=timeline"), "timeline");
+  assert.equal(getDemoStartStep("?screen=report"), "report");
+  assert.equal(getDemoStartStep("?screen=settings"), "create");
+  assert.equal(getDemoStartStep(""), "create");
+});
+
+test("demo status message matches the deep-linked screen", () => {
+  assert.match(getDemoStatusMessage("timeline"), /paused for a high-risk/);
+  assert.match(getDemoStatusMessage("report"), /credibility report/);
+  assert.match(getDemoStatusMessage("create"), /Review inputs/);
 });

@@ -51,3 +51,18 @@ export function getVisibleScreen(state) {
   if (!SCREENS.has(state.step)) throw new Error(`Unknown screen: ${state.step}`);
   return state.step;
 }
+
+export function getDemoStartStep(search) {
+  const requested = new URLSearchParams(search).get("screen");
+  return ["timeline", "report"].includes(requested) ? requested : "create";
+}
+
+export function getDemoStatusMessage(step) {
+  if (step === "timeline") {
+    return "The demonstrated run is paused for a high-risk semantic decision.";
+  }
+  if (step === "report") {
+    return "The frozen credibility report is ready for evidence review.";
+  }
+  return "Demo evidence loaded. Review inputs to begin.";
+}

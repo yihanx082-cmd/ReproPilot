@@ -50,3 +50,21 @@ def test_competitor_analysis_and_prd_are_bounded() -> None:
     ]:
         assert heading in prd
     assert "cloud GPU scheduling" in prd
+
+
+def test_case_study_preserves_evidence_boundaries() -> None:
+    case_study = (PRODUCT_DOCS / "case-study.md").read_text(encoding="utf-8")
+    handoff = (PRODUCT_DOCS / "figma-handoff.md").read_text(encoding="utf-8")
+    script = (PRODUCT_DOCS / "demo-video-script.md").read_text(encoding="utf-8")
+    assert "Awaiting real participant responses" in case_study
+    assert "6/6" in case_study
+    assert "80/100" in case_study
+    for frame in [
+        "Task Creation",
+        "Scope Review",
+        "Execution Timeline",
+        "Approval",
+        "Credibility Report",
+    ]:
+        assert frame in handoff
+    assert "not model accuracy" in script.lower()

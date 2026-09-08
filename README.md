@@ -153,6 +153,17 @@ python scripts/run_real_benchmark.py `
 
 2026-09-03 的 `deepseek-v4-pro` 基线中，6/6 案例定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,846 tokens。指标与数据类修改均正确经过高风险审批门。完整方法、逐案例结果和证据摘要见 [真实 Agent 基线](benchmark/real-baseline-summary.md)；reference harness 结果见 [确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
 
+## 产品案例与可点击原型
+
+仓库同时保留一套面向 AI 产品经理与 Coding Agent 岗位的完整产品案例：
+
+- [产品案例](docs/product/case-study.md)：用户问题、产品决策、MVP、工程证据、限制与下一轮迭代；
+- [产品需求文档](docs/product/prd.md) 与 [竞品分析](docs/product/competitor-analysis.md)；
+- [用户访谈工具包](docs/product/interview-kit.md) 与 [产品指标方案](docs/product/metrics-plan.md)；
+- [可点击原型说明](prototype/README.md)：创建任务、范围确认、执行时间线、高风险审批和可信度报告。
+
+真实用户访谈和可用性指标当前状态为 **Awaiting real participant responses**。仓库不会用模拟参与者或估算数字替代真实研究证据。
+
 ## 测试
 
 ```powershell

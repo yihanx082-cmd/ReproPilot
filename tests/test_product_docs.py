@@ -68,3 +68,17 @@ def test_case_study_preserves_evidence_boundaries() -> None:
     ]:
         assert frame in handoff
     assert "not model accuracy" in script.lower()
+
+
+def test_readme_links_product_case_without_claiming_completed_research() -> None:
+    readme = (PRODUCT_DOCS.parents[1] / "README.md").read_text(encoding="utf-8")
+    for link in [
+        "docs/product/prd.md",
+        "docs/product/competitor-analysis.md",
+        "docs/product/interview-kit.md",
+        "docs/product/metrics-plan.md",
+        "docs/product/case-study.md",
+        "prototype/README.md",
+    ]:
+        assert link in readme
+    assert "Awaiting real participant responses" in readme

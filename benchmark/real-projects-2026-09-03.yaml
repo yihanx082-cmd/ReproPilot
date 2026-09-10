@@ -82,31 +82,3 @@ cases:
       path: train.py
       required_text: "shuffle=False,\n            drop_last=False"
       failure_message: "DATASET ERROR in train.py: validation DataLoader order is nondeterministic"
-
-  - id: pytorch-cifar-test-split-leakage
-    repository_url: https://github.com/kuangliu/pytorch-cifar.git
-    commit_sha: 49b7aa97b0c12fe0d4054e670403a16b6b834ddd
-    license: MIT
-    injection: benchmark/real-injections/pytorch_cifar_test_split.patch
-    expected_category: data
-    expected_root_cause: The evaluation loader incorrectly uses the CIFAR-10 training split.
-    allowed_paths: [main.py]
-    expected_outcome: approval
-    probe:
-      path: main.py
-      required_text: "root='./data', train=False, download=True, transform=transform_test)"
-      failure_message: "DATASET ERROR in main.py: evaluation loader uses the CIFAR-10 training split"
-
-  - id: pytorch-cifar10-accuracy-denominator
-    repository_url: https://github.com/soapisnotfat/pytorch-cifar10.git
-    commit_sha: 1e49822683bf0800a3f4f7f0df778cb5ba6a87fe
-    license: Apache-2.0
-    injection: benchmark/real-injections/pytorch_cifar10_accuracy_denominator.patch
-    expected_category: metric
-    expected_root_cause: Test accuracy is divided by the number of batches instead of the number of samples.
-    allowed_paths: [main.py]
-    expected_outcome: approval
-    probe:
-      path: main.py
-      required_text: "return test_loss, test_correct / total"
-      failure_message: "METRIC ERROR in main.py: test accuracy uses the number of batches as its denominator"

@@ -161,7 +161,7 @@ repropilot resume runs\<run-id>
 python scripts/run_benchmark.py --cases benchmark/cases.yaml --output artifacts/benchmark
 ```
 
-真实 Agent benchmark 固定 3 个开源 PyTorch 图像分类仓库的提交，注入依赖、路径、配置、指标、CUDA 和数据故障，再由模型生成未知补丁：
+真实 Agent benchmark 清单固定 5 个开源 PyTorch 图像分类仓库的提交，包含 8 个依赖、路径、配置、指标、CUDA 和数据故障，再由模型生成未知补丁：
 
 ```powershell
 python scripts/run_real_benchmark.py `
@@ -171,7 +171,7 @@ python scripts/run_real_benchmark.py `
   --approve-high-risk
 ```
 
-2026-09-03 的 `deepseek-v4-pro` 基线中，6/6 案例定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,846 tokens。指标与数据类修改均正确经过高风险审批门。完整方法、逐案例结果和证据摘要见 [真实 Agent 基线](benchmark/real-baseline-summary.md)；reference harness 结果见 [确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
+2026-09-03 的 `deepseek-v4-pro` 已测基线覆盖原始 3 个仓库、6 个案例：6/6 定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,846 tokens。新增的第 4、5 个仓库已通过固定提交、补丁应用和语义探针验证，但尚未计入上述模型成绩。完整方法和逐案例结果见[真实 Agent 基线](benchmark/real-baseline-summary.md)，扩展证据见[五仓库验证记录](benchmark/expansion-validation.md)，reference harness 结果见[确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
 
 ## 产品案例与可点击原型
 
@@ -221,6 +221,6 @@ Docker 可执行文件位置因安装方式而异，可省略 `REPROPILOT_DOCKER
 - 结果解析目前支持日志中的 `metric=value`/`metric: value`。
 - 远程仓库、私有依赖和受限数据集仍需要用户提供访问权限。
 - 论文声明抽取与补丁生成依赖所选模型；所有模型输出仍会经过本地证据验证和风险策略。
-- 当前真实 Agent 基线只有 3 个仓库和 6 个单故障案例，适合证明闭环与安全策略，尚不足以代表对广泛未知项目的泛化能力。
+- 当前清单包含 5 个仓库和 8 个单故障案例，但已发布的模型基线只覆盖其中 3 个仓库、6 个案例；规模仍不足以代表对广泛未知项目的泛化能力。
 
 详细设计见 [架构说明](docs/architecture.md)，演示录制见 [五分钟演示脚本](docs/demo-script.md)。

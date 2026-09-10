@@ -96,11 +96,23 @@ def test_readme_links_product_case_with_bounded_research_claims() -> None:
         "docs/product/interview-kit.md",
         "docs/product/metrics-plan.md",
         "docs/product/case-study.md",
+        "docs/product/completion-audit.md",
         "prototype/README.md",
     ]:
         assert link in readme
     assert "3/5 无帮助独立完成" in readme
     assert "低于预设可用性门槛" in readme
+
+
+def test_completion_audit_separates_verified_and_owner_only_work() -> None:
+    audit = (PRODUCT_DOCS / "completion-audit.md").read_text(encoding="utf-8")
+
+    for evidence in ["153 项测试", "18 项显式 Docker", "5 个固定仓库、8 个故障"]:
+        assert evidence in audit
+    for boundary in ["不是模型准确率", "不是三次从头训练", "不能写成八案例成绩"]:
+        assert boundary in audit
+    for owner_only in ["停用曾发送到聊天中的旧 Key", "自己的声音", "真实参与者复测"]:
+        assert owner_only in audit
 
 
 def test_job_and_sql_materials_keep_claims_bounded() -> None:

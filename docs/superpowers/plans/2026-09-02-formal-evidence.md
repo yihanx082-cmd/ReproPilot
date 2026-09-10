@@ -244,7 +244,7 @@ Commit: `docs: expose formal experiment evidence`
 
 **Files:**
 - Modify only if required by a failing regression test or truthful demo configuration.
-- Generate outside Git: `D:\Projects\ReproPilotDemo\resnet-cifar10\runs\<run-id>\*`.
+- Generate outside Git: `<external-demo-root>\resnet-cifar10\runs\<run-id>\*`.
 
 **Interfaces:**
 - Consumes: the real paper, repository, full CIFAR-10 data and repaired run command.

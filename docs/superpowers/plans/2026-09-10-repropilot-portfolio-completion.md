@@ -1,6 +1,8 @@
 # ReproPilot Portfolio Completion Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 本文件是执行时制定的历史计划，未同步勾选的条目不代表当前状态。最新的逐项验证结果见 [`docs/product/completion-audit.md`](../../product/completion-audit.md)。
+
+> 历史执行说明：当时要求 agent 按 checkbox 逐项实施；当前请以交付审计为准，不要从本文件的未勾选项重新启动旧任务。
 
 **Goal:** 把 ReproPilot 从“技术 MVP + 本地产品原型”完善为可以放进简历、让面试官打开、并且所有结论都有证据支持的 AI 产品作品集。
 

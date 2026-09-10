@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import run from "../data/demo-run.json";
 import {
@@ -6,6 +6,7 @@ import {
   createInitialState,
   getDemoStartStep,
   getDemoStatusMessage,
+  getAppMode,
   getRunStatus,
   getStageStatus,
   rejectPatch,
@@ -20,7 +21,7 @@ const STEPS = [
   ["report", "4", "Credibility"],
 ];
 
-function ProductHeader({ screen }) {
+function ProductHeader({ screen, mode = "demo" }) {
   return (
     <header className="product-header">
       <div className="brand-lockup">
@@ -43,7 +44,7 @@ function ProductHeader({ screen }) {
           );
         })}
       </nav>
-      <span className="demo-badge">Demo mode</span>
+      <span className="demo-badge">{mode === "live" ? "Local execution" : "Demo mode"}</span>
     </header>
   );
 }
@@ -294,7 +295,133 @@ function CredibilityReport({ decision, onBack }) {
   );
 }
 
-export function App() {
+function LiveRunPanel() {
+  const [configPath, setConfigPath] = useState("examples/cifar10-smoke.yaml");
+  const [connection, setConnection] = useState("checking");
+  const [jobId, setJobId] = useState(null);
+  const [job, setJob] = useState(null);
+  const [activeRun, setActiveRun] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [message, setMessage] = useState("Checking the loopback API…");
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((response) => {
+        if (!response.ok) throw new Error("Local API is unavailable");
+        return response.json();
+      })
+      .then(() => {
+        setConnection("ready");
+        setMessage("Local API connected. Choose a YAML configuration to start a real run.");
+      })
+      .catch(() => {
+        setConnection("offline");
+        setMessage("Local API unavailable. Start it with: repropilot serve");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let cancelled = false;
+    async function refresh() {
+      const response = await fetch(`/api/jobs/${jobId}`);
+      const nextJob = await response.json();
+      if (cancelled) return;
+      setJob(nextJob);
+      if (["QUEUED", "RUNNING"].includes(nextJob.status)) {
+        window.setTimeout(refresh, 750);
+        return;
+      }
+      if (!nextJob.run_id) {
+        setMessage(nextJob.error || "The local run failed before artifacts were created.");
+        return;
+      }
+      const [runResponse, eventResponse] = await Promise.all([
+        fetch(`/api/runs/${nextJob.run_id}`),
+        fetch(`/api/runs/${nextJob.run_id}/events`),
+      ]);
+      const [runPayload, eventPayload] = await Promise.all([
+        runResponse.json(), eventResponse.json(),
+      ]);
+      if (cancelled) return;
+      setActiveRun(runPayload);
+      setEvents(eventPayload.events || []);
+      setMessage(`Run ${nextJob.run_id} reached ${nextJob.status}.`);
+    }
+    refresh().catch((error) => setMessage(error.message));
+    return () => { cancelled = true; };
+  }, [jobId]);
+
+  async function startRun(event) {
+    event.preventDefault();
+    setActiveRun(null);
+    setEvents([]);
+    setMessage("Submitting configuration to the local agent…");
+    const response = await fetch("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config_path: configPath }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setMessage(payload.detail || payload.error || "Run could not be created.");
+      return;
+    }
+    setJob(payload);
+    setJobId(payload.job_id);
+  }
+
+  async function decide(approved) {
+    const reason = approved ? null : "Rejected from the local evidence review.";
+    const response = await fetch(`/api/runs/${activeRun.run_id}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved, reason }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      setMessage(payload.detail || payload.error || "Decision could not be recorded.");
+      return;
+    }
+    setJob(payload);
+    setJobId(payload.job_id);
+    setMessage("SHA-bound decision recorded. The local agent is resuming.");
+  }
+
+  return (
+    <section className="live-run-screen" data-testid="live-run-panel">
+      <div className="section-heading split-heading">
+        <div>
+          <p className="eyebrow">Local agent bridge</p>
+          <h1>Run the real ReproPilot pipeline</h1>
+          <p>This mode reads actual CLI artifacts. It is available only from the loopback server on your own computer.</p>
+        </div>
+        <div className={`connection-card ${connection}`}><span>Connection</span><strong>{connection}</strong></div>
+      </div>
+      <form className="live-run-form" onSubmit={startRun}>
+        <label className="field"><span>Run configuration YAML</span><small>Path is resolved by the local Python process.</small><input value={configPath} onChange={(event) => setConfigPath(event.target.value)} /></label>
+        <button className="button primary" type="submit" disabled={connection !== "ready"}>Start real run</button>
+      </form>
+      <div className="live-message" aria-live="polite">{message}</div>
+      <div className="live-grid">
+        <article className="report-card">
+          <p className="eyebrow">Job</p>
+          <h2>{job?.status || "Not started"}</h2>
+          <dl className="live-facts"><div><dt>Job ID</dt><dd>{jobId || "—"}</dd></div><div><dt>Run ID</dt><dd>{activeRun?.run_id || job?.run_id || "—"}</dd></div><div><dt>Evidence events</dt><dd>{events.length}</dd></div></dl>
+          {activeRun?.status === "WAITING_APPROVAL" && <div className="approval-actions"><button className="button secondary" type="button" onClick={() => decide(false)}>Reject patch</button><button className="button primary" type="button" onClick={() => decide(true)}>Approve SHA-bound patch</button></div>}
+          {activeRun?.report_url && <a className="button report-button" href={activeRun.report_url} target="_blank" rel="noreferrer">Open generated HTML report</a>}
+        </article>
+        <article className="report-card live-events">
+          <p className="eyebrow">Actual artifact timeline</p>
+          <h2>Events</h2>
+          {events.length === 0 ? <p>No events recorded yet.</p> : <ol>{events.map((event, index) => <li key={`${event.timestamp}-${index}`}><span>{event.kind}</span><strong>{event.message}</strong><small>{event.timestamp}</small></li>)}</ol>}
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function DemoApp() {
   const initialStep = getDemoStartStep(window.location.search);
   const [state, setState] = useState(() => {
     const initial = createInitialState(run);
@@ -347,4 +474,12 @@ export function App() {
       {state.step === "report" && <CredibilityReport decision={state.decision} onBack={() => setState((current) => ({ ...current, step: "timeline" }))} />}
     </main>
   );
+}
+
+export function App() {
+  const mode = getAppMode(window.location.search);
+  if (mode === "live") {
+    return <main className="app-shell"><ProductHeader screen="timeline" mode="live" /><LiveRunPanel /></main>;
+  }
+  return <DemoApp />;
 }

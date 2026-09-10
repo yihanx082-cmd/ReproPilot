@@ -26,6 +26,8 @@ flowchart TD
     R --> G
     K --> L["Deterministic 100-point score"]
     L --> M["Self-contained HTML report"]
+    W["Loopback Web API"] --> A
+    B --> W
 ```
 
 ## 状态与证据
@@ -45,6 +47,7 @@ flowchart TD
 | 语义 | 数据、指标、模型、权重修改必须审批 |
 | 事务 | 先保存工作区哈希；测试失败反向应用补丁并校验完全恢复 |
 | 结论 | 缩小实验永远不能标记 `REPRODUCED` |
+| Web | 只允许 `127.0.0.1`/`localhost`/`::1`；run ID 白名单；修改请求必须为 JSON |
 
 ## 模块映射
 
@@ -53,10 +56,11 @@ flowchart TD
 - `sandbox.py`：Docker CLI 隔离和日志脱敏。
 - `diagnosis.py` / `policy.py` / `patching.py`：错误分类、风险门和 Git 事务。
 - `orchestrator.py` / `services.py`：状态机与真实服务接线。
+- `web.py`：回环地址上的薄 API 层；启动任务、读取持久化证据、记录 SHA 绑定审批并调用原状态机恢复。
 - `scoring.py` / `reporting.py`：可信度评分和单文件 HTML 报告。
 - `benchmark.py`：故障注入评测指标与 reference harness。
 - `real_benchmark.py`：固定真实仓库获取、隐藏故障生命周期、模型修复评测与证据聚合。
 
 ## MVP 边界
 
-本版本不包含多 Agent、Web 控制台、Kubernetes、完整 GPU 调度或自动数据许可处理。真实 Agent 基准只覆盖 3 个固定仓库中的 6 个单故障案例；它优先证明一个小而完整、证据可追踪、安全边界明确的 Coding Agent 闭环。
+本版本包含本地单用户 Web 控制台，但不包含云端执行、多 Agent、Kubernetes、完整 GPU 调度或自动数据许可处理。公开站点只有冻结演示数据；真实执行 API 只监听本机回环地址。真实 Agent 基准只覆盖 3 个固定仓库中的 6 个单故障案例；它优先证明一个小而完整、证据可追踪、安全边界明确的 Coding Agent 闭环。

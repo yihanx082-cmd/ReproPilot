@@ -119,3 +119,11 @@ def test_reject_requires_and_records_a_reason(tmp_path: Path):
     approval = json.loads((run_dir / "approval.json").read_text(encoding="utf-8"))
     assert approval["approved"] is False
     assert approval["reason"] == "Metric semantics differ."
+
+
+def test_serve_command_documents_loopback_only_local_api() -> None:
+    result = runner.invoke(_app(), ["serve", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "127.0.0.1" in result.output
+    assert "local" in result.output.lower()

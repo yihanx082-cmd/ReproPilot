@@ -4,8 +4,8 @@
 
 - Source: the user-selected **Execution Timeline** wireframe from `repropilot-layout-directions.html`.
 - Implementation: `http://127.0.0.1:4173/?screen=timeline` at 1440×900 and 1024×768.
-- Combined visual evidence: `C:/Users/10575/Documents/ChatGPT/agent/logs/repropilot-design-comparison.png`.
-- Implementation captures: `docs/product/assets/prototype-timeline.png` and `C:/Users/10575/Documents/ChatGPT/agent/logs/repropilot-timeline-1024.png`.
+- Combined visual evidence was inspected locally and intentionally not committed.
+- Tracked implementation capture: `docs/product/assets/prototype-timeline.png`; the 1024×768 layout was also checked locally.
 
 ## Findings and fixes
 

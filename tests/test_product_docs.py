@@ -1,0 +1,84 @@
+from pathlib import Path
+
+PRODUCT_DOCS = Path(__file__).parents[1] / "docs" / "product"
+
+
+def test_research_kit_has_required_sections() -> None:
+    interview = (PRODUCT_DOCS / "interview-kit.md").read_text(encoding="utf-8")
+    records = (PRODUCT_DOCS / "research-records" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    findings = (PRODUCT_DOCS / "research-findings.md").read_text(encoding="utf-8")
+    for heading in ["Round One", "Round Two", "Consent", "Anonymization"]:
+        assert heading in interview
+    for participant in ["P01", "P02", "P03", "P04", "P05"]:
+        assert participant in records
+    assert "Awaiting real participant responses" in findings
+    assert "statistically representative" in findings
+
+
+def test_metrics_and_usability_are_measurable() -> None:
+    metrics = (PRODUCT_DOCS / "metrics-plan.md").read_text(encoding="utf-8")
+    usability = (PRODUCT_DOCS / "usability-test.md").read_text(encoding="utf-8")
+    for metric in [
+        "Task completion rate",
+        "Time to interpret",
+        "Manual steps reduced",
+        "Decision correctness",
+        "Report comprehension",
+        "Satisfaction",
+    ]:
+        assert metric in metrics
+    assert "4 of 5" in usability
+    assert "credibility score" in usability
+    assert "model accuracy" in usability
+
+
+def test_competitor_analysis_and_prd_are_bounded() -> None:
+    competitors = (PRODUCT_DOCS / "competitor-analysis.md").read_text(encoding="utf-8")
+    prd = (PRODUCT_DOCS / "prd.md").read_text(encoding="utf-8")
+    assert "Primary sources" in competitors
+    assert "Manual workflow" in competitors
+    assert "Coding agents" in competitors
+    for heading in [
+        "Problem",
+        "Target User",
+        "Requirements",
+        "Non-goals",
+        "Risks",
+        "Acceptance Criteria",
+    ]:
+        assert heading in prd
+    assert "cloud GPU scheduling" in prd
+
+
+def test_case_study_preserves_evidence_boundaries() -> None:
+    case_study = (PRODUCT_DOCS / "case-study.md").read_text(encoding="utf-8")
+    handoff = (PRODUCT_DOCS / "figma-handoff.md").read_text(encoding="utf-8")
+    script = (PRODUCT_DOCS / "demo-video-script.md").read_text(encoding="utf-8")
+    assert "Awaiting real participant responses" in case_study
+    assert "6/6" in case_study
+    assert "80/100" in case_study
+    for frame in [
+        "Task Creation",
+        "Scope Review",
+        "Execution Timeline",
+        "Approval",
+        "Credibility Report",
+    ]:
+        assert frame in handoff
+    assert "not model accuracy" in script.lower()
+
+
+def test_readme_links_product_case_without_claiming_completed_research() -> None:
+    readme = (PRODUCT_DOCS.parents[1] / "README.md").read_text(encoding="utf-8")
+    for link in [
+        "docs/product/prd.md",
+        "docs/product/competitor-analysis.md",
+        "docs/product/interview-kit.md",
+        "docs/product/metrics-plan.md",
+        "docs/product/case-study.md",
+        "prototype/README.md",
+    ]:
+        assert link in readme
+    assert "Awaiting real participant responses" in readme

@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+node_modules/
+dist/
 
 # Secrets
 .env
@@ -20,6 +22,8 @@ data/
 datasets/
 models/
 weights/
+!prototype/data/
+!prototype/data/demo-run.json
 !benchmark/fixtures/yaml_project/data/
 !benchmark/fixtures/yaml_project/data/synthetic.txt
 *.pt

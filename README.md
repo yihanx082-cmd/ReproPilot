@@ -162,7 +162,7 @@ python scripts/run_real_benchmark.py `
 - [用户访谈工具包](docs/product/interview-kit.md) 与 [产品指标方案](docs/product/metrics-plan.md)；
 - [可点击原型说明](prototype/README.md)：创建任务、范围确认、执行时间线、高风险审批和可信度报告。
 
-真实用户访谈和可用性指标当前状态为 **Awaiting real participant responses**。仓库不会用模拟参与者或估算数字替代真实研究证据。
+第一轮 5 位真实参与者的去身份化访谈与原型观察已经完成：5/5 完成核心流程，3/5 无帮助独立完成，2/5 初次把可信度分数误认为模型准确率。结果低于预设可用性门槛，详见[用户研究发现](docs/product/research-findings.md)；仓库不会用模拟参与者或估算数字替代真实研究证据。
 
 ## 测试
 

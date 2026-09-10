@@ -1,5 +1,9 @@
 const SCREENS = new Set(["create", "scope", "timeline", "report"]);
 
+export function getAppMode(search) {
+  return new URLSearchParams(search).get("live") === "1" ? "live" : "demo";
+}
+
 export function createInitialState(run) {
   return {
     run,

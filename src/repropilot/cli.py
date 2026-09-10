@@ -107,6 +107,39 @@ def resume(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def serve(
+    output_root: Annotated[Path, typer.Option()] = Path("runs"),
+    host: Annotated[str, typer.Option(help="Loopback host only.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(min=0, max=65535)] = 8765,
+    static_root: Annotated[Path, typer.Option()] = Path("prototype/dist/client"),
+) -> None:
+    """Serve the local Web UI and real run API on 127.0.0.1."""
+    from repropilot.web import LocalRunServer, OrchestratorExecutor
+
+    assets = static_root if static_root.is_dir() else None
+    try:
+        server = LocalRunServer(
+            host=host,
+            port=port,
+            output_root=output_root,
+            runner=OrchestratorExecutor(output_root, _default_services),
+            static_root=assets,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Cannot start local server: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"Local ReproPilot: http://{host}:{server.port}")
+    if assets is None:
+        typer.echo("Prototype build not found; serving the API only.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        typer.echo("Stopping local ReproPilot server.")
+    finally:
+        server.shutdown()
+
+
 def _record_approval(
     run_dir: Path,
     patch_id: str,

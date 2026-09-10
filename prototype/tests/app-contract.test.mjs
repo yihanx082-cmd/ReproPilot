@@ -24,6 +24,9 @@ test("app exposes the complete evidence-led journey", async () => {
   assert.match(source, /为什么需要你决定/);
   assert.match(source, /getRunStatus\(state\)/);
   assert.match(source, /Test exit code/);
+  assert.match(source, /\/api\/health/);
+  assert.match(source, /\/api\/runs/);
+  assert.match(source, /Local execution/);
 });
 
 test("document suppresses an unnecessary favicon request", async () => {

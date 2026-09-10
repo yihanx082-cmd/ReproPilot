@@ -72,6 +72,22 @@ API Key 只应保存在本机环境变量中，不要写入 YAML、源码、日�
 repropilot run --config examples/cifar10-smoke.yaml --validate-only
 ```
 
+## 本地网页运行模式
+
+公开网址始终使用去敏的冻结演示数据，适合分享给面试官，不会在访问者电脑上执行代码。需要查看真实运行状态时，在本机先构建前端，再由 Python 启动只监听回环地址的 Web 服务：
+
+```powershell
+cd prototype
+npm install
+npm run build
+cd ..
+repropilot serve --host 127.0.0.1 --port 8765
+```
+
+浏览器打开 `http://127.0.0.1:8765/?live=1`。填写 YAML 配置路径后，网页会调用同一个 ReproPilot 状态机，并直接读取 `run.json`、`events.jsonl`、审批记录和 `report.html`；它不会在前端重新计算可信度分数或绕过高风险审批。
+
+`127.0.0.1` 表示服务只能被当前电脑访问。Web API 拒绝外网绑定、路径穿越和非 JSON 修改请求；真实任务仍需要本机 Docker、有效配置和仅保存在环境变量中的模型 API 凭据。
+
 ## 一条命令运行
 
 先复制并修改 [examples/cifar10-smoke.yaml](examples/cifar10-smoke.yaml) 中的 PDF、仓库和数据集绝对路径，然后运行：

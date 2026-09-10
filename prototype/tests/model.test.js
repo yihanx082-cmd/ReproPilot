@@ -7,6 +7,7 @@ import {
   createInitialState,
   getDemoStartStep,
   getDemoStatusMessage,
+  getAppMode,
   getRunStatus,
   getStageStatus,
   getVisibleScreen,
@@ -116,4 +117,10 @@ test("demo status message matches the deep-linked screen", () => {
   assert.match(getDemoStatusMessage("timeline"), /paused for a high-risk/);
   assert.match(getDemoStatusMessage("report"), /credibility report/);
   assert.match(getDemoStatusMessage("create"), /Review inputs/);
+});
+
+test("live mode requires an explicit local query flag", () => {
+  assert.equal(getAppMode("?live=1"), "live");
+  assert.equal(getAppMode("?live=0"), "demo");
+  assert.equal(getAppMode(""), "demo");
 });

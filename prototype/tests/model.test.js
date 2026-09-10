@@ -7,6 +7,8 @@ import {
   createInitialState,
   getDemoStartStep,
   getDemoStatusMessage,
+  getRunStatus,
+  getStageStatus,
   getVisibleScreen,
   rejectPatch,
   selectStage,
@@ -82,6 +84,17 @@ test("rejection records a required reason", () => {
     () => rejectPatch(state, run.approval.patch_sha256, " "),
     /Rejection reason is required/,
   );
+  assert.equal(getRunStatus(rejected), "STOPPED — PATCH REJECTED");
+  assert.equal(getStageStatus(run.timeline[5], rejected.decision), "rejected");
+  assert.equal(getStageStatus(run.timeline[6], rejected.decision), "stopped");
+  assert.equal(getStageStatus(run.timeline[7], rejected.decision), "stopped");
+});
+
+test("approval marks the decision stage verified and completes the run", () => {
+  const approved = approvePatch(createInitialState(run), run.approval.patch_sha256);
+
+  assert.equal(getRunStatus(approved), "VERIFIED");
+  assert.equal(getStageStatus(run.timeline[5], approved.decision), "verified");
 });
 
 test("visible screens are limited to the product journey", () => {

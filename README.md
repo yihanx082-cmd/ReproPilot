@@ -1,5 +1,9 @@
 # ReproPilot
 
+**公开可点击原型：** https://repropilot-evidence-agent.yizhuliang42.chatgpt.site
+
+该网页使用去敏冻结证据演示任务创建、执行时间线、高风险审批与可信度报告；真正的论文解析和 Docker 执行由本仓库的 Python CLI 完成。
+
 ReproPilot 是一个面向机器学习论文复现的代码执行与修复智能体。输入论文 PDF、GitHub/本地仓库、数据集目录和运行命令后，它会在受限 Docker 容器里执行项目，保存论文—代码差异、命令日志、诊断、Git diff、测试、指标对比和确定性可信度评分，最后生成单文件 HTML 证据报告。
 
 ![ReproPilot report preview](docs/assets/report-preview.svg)
@@ -162,7 +166,7 @@ python scripts/run_real_benchmark.py `
 - [用户访谈工具包](docs/product/interview-kit.md) 与 [产品指标方案](docs/product/metrics-plan.md)；
 - [可点击原型说明](prototype/README.md)：创建任务、范围确认、执行时间线、高风险审批和可信度报告。
 
-真实用户访谈和可用性指标当前状态为 **Awaiting real participant responses**。仓库不会用模拟参与者或估算数字替代真实研究证据。
+第一轮 5 位真实参与者的去身份化访谈与原型观察已经完成：5/5 完成核心流程，3/5 无帮助独立完成，2/5 初次把可信度分数误认为模型准确率。结果低于预设可用性门槛，详见[用户研究发现](docs/product/research-findings.md)；仓库不会用模拟参与者或估算数字替代真实研究证据。
 
 ## 测试
 

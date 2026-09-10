@@ -9,6 +9,14 @@
 
 ## Findings and fixes
 
+### Resolved P0 — rejection incorrectly looked verified
+
+The first usability round found that rejecting the semantic patch still left the run and approval stage marked `VERIFIED`. The interaction model now derives run and stage status from the SHA-bound decision: rejection produces `STOPPED — PATCH REJECTED`, marks the approval stage `rejected`, and marks downstream experiment/report stages `stopped`. The terminal report issues no credibility score after rejection.
+
+### Resolved P1 — score and approval evidence were easy to misread
+
+Two of five participants initially read `80/100` as model accuracy. The timeline and report now permanently pair the label `Evidence credibility · 复现证据可信度` with `Not model accuracy · 不是模型准确率`. The approval view adds a bilingual reason, `91.73% accuracy → 8.27% error`, paper table evidence, Git diff notation help, test exit code, key assertion, and log excerpt.
+
 ### Resolved P1 — status message contradicted the deep-linked state
 
 The first implementation opened the approval timeline while the live message still said to review task inputs. This weakened state clarity. `getDemoStatusMessage()` now derives the message from the initial screen, and an automated test covers create, timeline, and report states. The revised capture says the demonstrated run is paused for a high-risk semantic decision.
@@ -31,7 +39,7 @@ The wireframe establishes a three-column composition with navigation/stages, tim
 
 - Browser flow: create, scope review, approval timeline, SHA-bound approval, and credibility report all completed.
 - Browser console: zero error entries.
-- Automated interaction model: 12 tests passed.
+- Automated interaction model and static app contract: 14 tests passed.
 - Static app contract: 2 tests passed.
 - Sites worker contract: 4 tests passed.
 - Production build: passed.
@@ -40,6 +48,7 @@ The wireframe establishes a three-column composition with navigation/stages, tim
 
 - At 1024 px the stepper intentionally hides text labels and retains numbered progress only.
 - A later usability round should test whether first-time users recognize the compact evidence file names without opening help text.
+- A second usability round is still required; implementation verification cannot prove that the two observed misunderstandings are resolved for users.
 
 ## Final result
 

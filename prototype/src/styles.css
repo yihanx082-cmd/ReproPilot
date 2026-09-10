@@ -126,6 +126,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .run-status { display: grid; justify-items: end; gap: 3px; }
 .run-status span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
 .run-status strong { color: var(--amber); font-size: 12px; }
+.run-status.rejected strong { color: var(--red); }
 .timeline-workspace { max-width: 1500px; min-height: 650px; margin: 0 auto; display: grid; grid-template-columns: 280px minmax(420px, 1fr) 320px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 14px 36px rgba(31, 42, 61, 0.07); }
 .stage-list { padding: 20px 12px; background: #f5f7fa; border-right: 1px solid var(--line); }
 .panel-heading { padding: 0 10px 14px; }
@@ -152,6 +153,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .approval-warning { padding: 18px 20px; border-left: 3px solid var(--amber); background: var(--amber-soft); }
 .approval-warning strong { font-size: 12px; }
 .approval-warning p { margin: 6px 0 0; color: #655544; font-size: 13px; line-height: 1.55; }
+.test-result { display: grid; gap: 10px; margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--subtle); }
+.test-result div { display: grid; gap: 4px; }
+.test-result span { color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.test-result code { color: #455166; font: 11px/1.5 "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
 .impact-grid { display: grid; grid-template-columns: 140px 1fr; gap: 1px; margin: 18px 0; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .impact-grid div { padding: 14px; background: #fff; }
 .impact-grid dt { color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
@@ -176,6 +181,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .evidence-item code, .sha-block code { overflow-wrap: anywhere; color: #455166; font: 10px/1.5 "SFMono-Regular", Consolas, monospace; }
 .sha-block { display: grid; gap: 7px; margin-top: 16px; padding: 12px; border-top: 1px solid var(--line); }
 .sha-block span { margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.score-clarifier { display: grid; gap: 4px; margin-top: auto; padding: 12px; border: 1px solid #b9c9eb; border-radius: 8px; background: #f4f7fd; }
+.score-clarifier strong { color: var(--blue); font-size: 11px; }
+.score-clarifier span { color: var(--muted); font-size: 10px; }
 .report-button { margin-top: auto; color: var(--blue); background: #fff; border-color: #b9c9eb; }
 
 .report-hero { display: grid; grid-template-columns: 1fr 270px; align-items: center; gap: 40px; margin-bottom: 24px; }
@@ -185,6 +193,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .score-card > strong small { color: #aeb8c8; font-size: 16px; }
 .score-card > b { margin-top: 8px; color: #f8c878; font-size: 12px; letter-spacing: 0.1em; }
 .score-card > p { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #354158; color: #d6dce6; font-size: 11px; }
+.score-card.rejected { background: #4b2521; }
+.terminal-report { margin-top: 20px; padding: 28px; border: 1px solid #efc7c2; border-radius: 10px; background: #fff7f6; }
+.terminal-report h2 { margin: 0 0 10px; color: var(--red); }
+.terminal-report p { color: #6c433f; line-height: 1.6; }
+.stage-index.rejected, .stage-index.stopped { color: #fff; background: var(--red); }
+.status-tag.rejected, .status-tag.stopped { color: var(--red); background: #fff0ee; }
 .report-grid { display: grid; grid-template-columns: 0.8fr 1.3fr; gap: 16px; }
 .report-card { padding: 22px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .card-heading h2 { margin: 5px 0 18px; font-size: 19px; }

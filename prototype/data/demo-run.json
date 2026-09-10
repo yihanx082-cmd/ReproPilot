@@ -118,9 +118,17 @@
     "patch_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "risk": "high",
     "root_cause": "The paper reports error rate while the repository emits top-1 accuracy.",
+    "plain_language": "论文使用错误率，代码输出准确率。这个修改只转换报告数字，不改变模型预测，但会改变最终指标的含义，所以需要你决定。",
     "impact": "The displayed value changes meaning; the underlying predictions are unchanged.",
+    "example": "91.73% accuracy → 8.27% error",
+    "paper_evidence": "Paper table 6, ResNet-20 on CIFAR-10: Error 8.75%",
     "diff": "- metrics['top1'] = accuracy\n+ metrics['error'] = 100.0 - accuracy",
-    "targeted_test": ["python", "-m", "pytest", "tests/test_metrics.py", "-q"]
+    "targeted_test": ["python", "-m", "pytest", "tests/test_metrics.py", "-q"],
+    "targeted_test_result": {
+      "exit_code": 0,
+      "assertion": "accuracy=91.73 produces error=8.27 without changing predictions",
+      "log_excerpt": "1 passed in 0.18s"
+    }
   },
   "report": {
     "score": 80,

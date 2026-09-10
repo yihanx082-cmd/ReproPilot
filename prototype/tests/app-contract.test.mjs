@@ -20,6 +20,10 @@ test("app exposes the complete evidence-led journey", async () => {
   assert.match(source, /aria-live=["']polite["']/);
   assert.match(source, /Frozen, sanitized evidence/);
   assert.match(source, /This is not model accuracy/);
+  assert.match(source, /不是模型准确率/);
+  assert.match(source, /为什么需要你决定/);
+  assert.match(source, /getRunStatus\(state\)/);
+  assert.match(source, /Test exit code/);
 });
 
 test("document suppresses an unnecessary favicon request", async () => {

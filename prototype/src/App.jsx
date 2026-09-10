@@ -6,6 +6,8 @@ import {
   createInitialState,
   getDemoStartStep,
   getDemoStatusMessage,
+  getRunStatus,
+  getStageStatus,
   rejectPatch,
   selectStage,
   validateTask,
@@ -152,7 +154,7 @@ function StageList({ stages, selectedId, decision, onSelect }) {
         <h2>Execution</h2>
       </div>
       {stages.map((stage, index) => {
-        const effectiveStatus = stage.id === "approval" && decision ? "verified" : stage.status;
+        const effectiveStatus = getStageStatus(stage, decision);
         return (
           <button className={`stage-button ${selectedId === stage.id ? "selected" : ""}`} type="button" onClick={() => onSelect(stage.id)} key={stage.id}>
             <span className={`stage-index ${effectiveStatus}`}>{String(index + 1).padStart(2, "0")}</span>
@@ -193,27 +195,35 @@ function ExecutionTimeline({ state, onSelect, onApprove, onReject, onReport }) {
   const [rejectionReason, setRejectionReason] = useState("");
   const selected = run.timeline.find((stage) => stage.id === state.selectedStageId);
   const isApproval = selected.id === "approval";
+  const selectedStatus = getStageStatus(selected, state.decision);
 
   return (
     <section className="timeline-screen" data-testid="execution-timeline">
       <div className="timeline-titlebar">
         <div><p className="eyebrow">Live reproduction timeline</p><h1>{run.task.name}</h1></div>
-        <div className="run-status"><span>Current state</span><strong>{state.decision ? "VERIFIED" : "WAITING APPROVAL"}</strong></div>
+        <div className={`run-status ${state.decision?.approved === false ? "rejected" : ""}`}><span>Current state</span><strong>{getRunStatus(state)}</strong></div>
       </div>
       <div className="timeline-workspace">
         <StageList stages={run.timeline} selectedId={selected.id} decision={state.decision} onSelect={onSelect} />
         <article className="event-detail">
-          <div className="event-topline"><span className={`status-tag ${selected.status.replace(" ", "-")}`}>{selected.status}</span><code>{selected.state}</code></div>
+          <div className="event-topline"><span className={`status-tag ${selectedStatus.replace(" ", "-")}`}>{selectedStatus}</span><code>{selected.state}</code></div>
           <h2>{selected.title}</h2>
           <p className="event-summary">{selected.summary}</p>
           {isApproval ? (
             <div className="approval-card" data-testid="approval-panel">
-              <div className="approval-warning"><strong>Why the agent paused</strong><p>{run.approval.root_cause}</p></div>
+              <div className="approval-warning"><strong>Why the agent paused · 为什么需要你决定</strong><p>{run.approval.root_cause}</p><p>{run.approval.plain_language}</p></div>
               <dl className="impact-grid">
                 <div><dt>Risk level</dt><dd>{run.approval.risk}</dd></div>
-                <div><dt>Semantic impact</dt><dd>{run.approval.impact}</dd></div>
+                <div><dt>Semantic impact · 语义影响</dt><dd><strong>{run.approval.impact}</strong></dd></div>
+                <div><dt>Numeric example · 数值示例</dt><dd>{run.approval.example}</dd></div>
+                <div><dt>Paper evidence · 论文证据</dt><dd>{run.approval.paper_evidence}</dd></div>
               </dl>
-              <div className="diff-block"><div><span>Proposed Git diff</span><small>Illustrative approval state</small></div><pre>{run.approval.diff}</pre></div>
+              <div className="diff-block"><div><span>Proposed Git diff</span><small>`-` 删除原行，`+` 添加新行 · illustrative evidence</small></div><pre>{run.approval.diff}</pre></div>
+              <div className="test-result">
+                <div><span>Test exit code</span><strong>{run.approval.targeted_test_result.exit_code}</strong></div>
+                <div><span>Key assertion · 关键断言</span><code>{run.approval.targeted_test_result.assertion}</code></div>
+                <div><span>Test log · 测试日志</span><code>{run.approval.targeted_test_result.log_excerpt}</code></div>
+              </div>
               <ApprovalPanel
                 decision={state.decision}
                 rejectOpen={rejectOpen}
@@ -233,7 +243,8 @@ function ExecutionTimeline({ state, onSelect, onApprove, onReject, onReport }) {
           <div className="evidence-list">
             {selected.evidence.map((item, index) => <div className="evidence-item" key={item}><span>{String(index + 1).padStart(2, "0")}</span><code>{item}</code></div>)}
           </div>
-          {isApproval && <div className="sha-block"><span>Patch SHA-256</span><code>{run.approval.patch_sha256}</code><span>Targeted test</span><code>{run.approval.targeted_test.join(" ")}</code></div>}
+          {isApproval && <div className="sha-block"><span>Patch SHA-256 · 补丁唯一指纹</span><code>{run.approval.patch_sha256}</code><span>Targeted test · 针对性测试</span><code>{run.approval.targeted_test.join(" ")}</code></div>}
+          <div className="score-clarifier"><strong>Evidence credibility · 复现证据可信度</strong><span>Not model accuracy · 不是模型准确率</span></div>
           <button className="button report-button" type="button" disabled={!state.decision} onClick={onReport}>Open credibility report</button>
         </aside>
       </div>
@@ -241,17 +252,25 @@ function ExecutionTimeline({ state, onSelect, onApprove, onReject, onReport }) {
   );
 }
 
-function CredibilityReport({ onBack }) {
+function CredibilityReport({ decision, onBack }) {
+  const rejected = decision?.approved === false;
   return (
     <section className="report-screen" data-testid="credibility-report">
       <div className="report-hero">
         <div>
           <p className="eyebrow">Final evidence report</p>
           <h1>{run.task.name}</h1>
-          <p>Public pretrained-weight evaluation with three independently recorded seeds.</p>
+          <p>{rejected ? "The run stopped because the semantic patch was rejected. No downstream experiment was verified." : "Public pretrained-weight evaluation with three independently recorded seeds."}</p>
         </div>
-        <div className="score-card"><span>Evidence credibility</span><strong>{run.report.score}<small>/100</small></strong><b>{run.report.label}</b><p>This is not model accuracy.</p></div>
+        {rejected ? (
+          <div className="score-card rejected"><span>Terminal evidence report · 终止证据报告</span><strong>STOPPED</strong><b>PATCH REJECTED</b><p>No credibility score was issued after rejection.</p></div>
+        ) : (
+          <div className="score-card"><span>Evidence credibility · 复现证据可信度</span><strong>{run.report.score}<small>/100</small></strong><b>{run.report.label}</b><p>This is not model accuracy. 这不是模型准确率。</p></div>
+        )}
       </div>
+      {rejected ? (
+        <div className="terminal-report"><h2>Why the run stopped · 为什么停止</h2><p>{decision.reason}</p><p>The rejected patch SHA remains recorded, while formal experiment and scoring stages are marked stopped.</p></div>
+      ) : (
       <div className="report-grid">
         <article className="report-card comparison-card">
           <div className="card-heading"><p className="eyebrow">Primary comparison</p><h2>Error rate</h2></div>
@@ -269,6 +288,7 @@ function CredibilityReport({ onBack }) {
           <ol>{run.report.unresolved_risks.map((risk) => <li key={risk}>{risk}</li>)}</ol>
         </article>
       </div>
+      )}
       <div className="page-actions"><button className="button secondary" type="button" onClick={onBack}>Back to evidence timeline</button><span>Report evidence remains available even when a run fails or stops.</span></div>
     </section>
   );
@@ -324,7 +344,7 @@ export function App() {
       {state.step === "create" && <TaskForm task={task} errors={errors} onChange={(field, value) => setTask((current) => ({ ...current, [field]: value }))} onContinue={continueToScope} />}
       {state.step === "scope" && <ScopeReview onBack={() => setState((current) => ({ ...current, step: "create" }))} onStart={startRun} />}
       {state.step === "timeline" && <ExecutionTimeline state={state} onSelect={(id) => setState((current) => selectStage(current, id))} onApprove={approve} onReject={reject} onReport={() => setState((current) => ({ ...current, step: "report" }))} />}
-      {state.step === "report" && <CredibilityReport onBack={() => setState((current) => ({ ...current, step: "timeline" }))} />}
+      {state.step === "report" && <CredibilityReport decision={state.decision} onBack={() => setState((current) => ({ ...current, step: "timeline" }))} />}
     </main>
   );
 }

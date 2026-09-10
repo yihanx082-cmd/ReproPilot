@@ -47,6 +47,18 @@ export function rejectPatch(state, patchSha256, reason) {
   };
 }
 
+export function getRunStatus(state) {
+  if (!state.decision) return "WAITING APPROVAL";
+  return state.decision.approved ? "VERIFIED" : "STOPPED — PATCH REJECTED";
+}
+
+export function getStageStatus(stage, decision) {
+  if (!decision) return stage.status;
+  if (stage.id === "approval") return decision.approved ? "verified" : "rejected";
+  if (!decision.approved && ["formal", "report"].includes(stage.id)) return "stopped";
+  return stage.status;
+}
+
 export function getVisibleScreen(state) {
   if (!SCREENS.has(state.step)) throw new Error(`Unknown screen: ${state.step}`);
   return state.step;

@@ -1,5 +1,9 @@
 # ReproPilot
 
+**公开可点击原型：** https://repropilot-evidence-agent.yizhuliang42.chatgpt.site
+
+该网页使用去敏冻结证据演示任务创建、执行时间线、高风险审批与可信度报告；真正的论文解析和 Docker 执行由本仓库的 Python CLI 完成。
+
 ReproPilot 是一个面向机器学习论文复现的代码执行与修复智能体。输入论文 PDF、GitHub/本地仓库、数据集目录和运行命令后，它会在受限 Docker 容器里执行项目，保存论文—代码差异、命令日志、诊断、Git diff、测试、指标对比和确定性可信度评分，最后生成单文件 HTML 证据报告。
 
 ![ReproPilot report preview](docs/assets/report-preview.svg)

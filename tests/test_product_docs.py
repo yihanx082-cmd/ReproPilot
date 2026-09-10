@@ -99,3 +99,14 @@ def test_readme_links_product_case_with_bounded_research_claims() -> None:
         assert link in readme
     assert "3/5 无帮助独立完成" in readme
     assert "低于预设可用性门槛" in readme
+
+
+def test_job_and_sql_materials_keep_claims_bounded() -> None:
+    job_kit = (PRODUCT_DOCS / "job-kit.md").read_text(encoding="utf-8")
+    sql_practice = (PRODUCT_DOCS / "sql-practice.md").read_text(encoding="utf-8")
+    for required in ["30 秒介绍", "3 分钟 STAR", "80/100 怎么算", "一个失败或取舍案例"]:
+        assert required in job_kit
+    assert "不能宣称通用自动复现" in job_kit
+    for topic in ["基础筛选", "分组指标", "漏斗", "次日与七日留存"]:
+        assert topic in sql_practice
+    assert "不代表当前 MVP 已经采集真实线上用户数据" in sql_practice

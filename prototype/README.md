@@ -1,5 +1,7 @@
 # ReproPilot Clickable Product Prototype
 
+Public demo: https://repropilot-evidence-agent.yizhuliang42.chatgpt.site
+
 This desktop prototype demonstrates the complete evidence-led journey: task creation, paper–code scope review, execution timeline, high-risk patch approval, and credibility report.
 
 ## Run locally

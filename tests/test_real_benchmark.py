@@ -128,13 +128,13 @@ def test_real_case_rejects_floating_commit_reference() -> None:
         _case("https://github.com/example/project.git", "main")
 
 
-def test_real_manifest_pins_three_repositories_and_six_faults() -> None:
+def test_real_manifest_pins_five_repositories_and_eight_faults() -> None:
     root = Path(__file__).parents[1]
     cases = load_real_cases(root / "benchmark" / "real-projects.yaml", root=root)
 
-    assert len(cases) == 6
-    assert len({case.id for case in cases}) == 6
-    assert len({case.repository_url for case in cases}) == 3
+    assert len(cases) == 8
+    assert len({case.id for case in cases}) == 8
+    assert len({case.repository_url for case in cases}) == 5
     assert all(len(case.commit_sha) == 40 for case in cases)
     assert all(case.injection.is_file() for case in cases)
     assert {case.expected_category.value for case in cases} == {
@@ -145,6 +145,22 @@ def test_real_manifest_pins_three_repositories_and_six_faults() -> None:
         "metric",
         "data",
     }
+
+
+def test_published_baseline_manifest_remains_frozen_to_six_cases() -> None:
+    root = Path(__file__).parents[1]
+    cases = load_real_cases(
+        root / "benchmark" / "real-projects-2026-09-03.yaml", root=root
+    )
+
+    assert [case.id for case in cases] == [
+        "convmixer-missing-dependency",
+        "convmixer-incorrect-dataset-path",
+        "resnet-learning-rate-mismatch",
+        "resnet-top1-metric-mismatch",
+        "lightning-cuda-fallback",
+        "lightning-validation-shuffle",
+    ]
 
 
 def test_acquisition_checks_out_exact_pinned_commit(tmp_path: Path) -> None:
@@ -326,7 +342,7 @@ def test_all_real_injection_patches_are_valid_unified_diffs() -> None:
         for patch in patches
     ]
 
-    assert len(patches) == 6
+    assert len(patches) == 8
     failures = [
         (patch.name, result.stderr)
         for patch, result in zip(patches, results, strict=True)

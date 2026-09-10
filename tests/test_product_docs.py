@@ -74,6 +74,8 @@ def test_case_study_preserves_evidence_boundaries() -> None:
     script = (PRODUCT_DOCS / "demo-video-script.md").read_text(encoding="utf-8")
     assert "5 位" in case_study
     assert "6/6" in case_study
+    assert "5 个小型仓库和 8 个单故障案例" in case_study
+    assert "原始 3 个仓库、6 个案例" in case_study
     assert "80/100" in case_study
     for frame in [
         "Task Creation",

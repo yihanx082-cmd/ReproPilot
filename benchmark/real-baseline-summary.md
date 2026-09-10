@@ -14,8 +14,8 @@ the failure message, semantic requirement, and allowed source file, but not the
 injection patch or inverse Git diff. Every generated diff passed the local path,
 size, risk, transaction, and post-fix probe checks.
 
-The case definitions and pinned source identities are in
-[`real-projects.yaml`](real-projects.yaml). The runner is
+The frozen case definitions and pinned source identities are in
+[`real-projects-2026-09-03.yaml`](real-projects-2026-09-03.yaml). The runner is
 [`run_real_benchmark.py`](../scripts/run_real_benchmark.py).
 
 ## Aggregate result
@@ -60,7 +60,7 @@ run:
 
 ```powershell
 python scripts/run_real_benchmark.py `
-  --cases benchmark/real-projects.yaml `
+  --cases benchmark/real-projects-2026-09-03.yaml `
   --output artifacts/real-agent-benchmark `
   --source-cache artifacts/pinned-sources `
   --approve-high-risk

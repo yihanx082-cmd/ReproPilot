@@ -127,3 +127,25 @@ def test_serve_command_documents_loopback_only_local_api() -> None:
     assert result.exit_code == 0, result.output
     assert "127.0.0.1" in result.output
     assert "local" in result.output.lower()
+
+
+def test_default_services_enable_sqlite_memory_only_when_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from repropilot.cli import _default_services
+    from repropilot.repair_memory import NullRepairMemory, SQLiteRepairMemory
+
+    monkeypatch.setenv("OPENAI_API_KEY", "local-test-value")
+    monkeypatch.setenv("OPENAI_MODEL", "test-model")
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("REPROPILOT_MEMORY_DB", raising=False)
+
+    without_memory = _default_services()
+    assert isinstance(without_memory.repair_memory, NullRepairMemory)
+
+    memory_path = tmp_path / "repair-memory.sqlite3"
+    monkeypatch.setenv("REPROPILOT_MEMORY_DB", str(memory_path))
+    with_memory = _default_services()
+
+    assert isinstance(with_memory.repair_memory, SQLiteRepairMemory)
+    assert memory_path.is_file()

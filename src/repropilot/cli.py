@@ -13,6 +13,7 @@ from repropilot.artifacts import ArtifactStore
 from repropilot.domain import ApprovalDecision, RunStatus
 from repropilot.orchestrator import ReproPilot
 from repropilot.paper import OpenAICompatiblePaperLLM
+from repropilot.repair_memory import SQLiteRepairMemory
 from repropilot.services import DefaultRunServices, OpenAICompatiblePatchGenerator
 from repropilot.settings import load_run_request
 
@@ -181,6 +182,7 @@ def _default_services() -> DefaultRunServices:
         if base_url and base_url.rstrip("/") == "https://api.deepseek.com"
         else "json_schema"
     )
+    memory_path = os.environ.get("REPROPILOT_MEMORY_DB")
     return DefaultRunServices(
         paper_llm=OpenAICompatiblePaperLLM(
             client,
@@ -192,6 +194,7 @@ def _default_services() -> DefaultRunServices:
             model,
             structured_output_mode=structured_output_mode,
         ),
+        repair_memory=SQLiteRepairMemory(Path(memory_path)) if memory_path else None,
     )
 
 

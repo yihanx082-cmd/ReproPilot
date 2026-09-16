@@ -16,6 +16,9 @@ dist/
 runs/
 artifacts/
 logs/
+tmp/
+*.sqlite
+*.sqlite3
 
 # Large local assets
 data/

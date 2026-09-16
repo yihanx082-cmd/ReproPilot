@@ -173,15 +173,36 @@ python scripts/run_real_benchmark.py `
 
 2026-09-03 的 `deepseek-v4-pro` 已测基线覆盖原始 3 个仓库、6 个案例：6/6 定位正确、6/6 修复成功、6/6 修复后探针通过，无关改动率为 0%，共使用 6 次模型调用和 18,846 tokens。新增的第 4、5 个仓库已通过固定提交、补丁应用和语义探针验证，但尚未计入上述模型成绩。完整方法和逐案例结果见[真实 Agent 基线](benchmark/real-baseline-summary.md)，扩展证据见[五仓库验证记录](benchmark/expansion-validation.md)，reference harness 结果见[确定性基线](benchmark/baseline-summary.md)。语义探针通过只证明有限范围内的代码修复成功，不代表完成了论文训练或复现了论文指标。
 
+### Agent 反馈循环与记忆消融
+
+为了避免原始 6 个案例全部一次成功造成的天花板效应，项目新增 3 个双故障渐进案例，并对比原始单轮、结构化诊断单轮、反馈循环和反馈循环加跨仓库验证记忆四组策略。完整协议见 [Agent 消融评测方法](docs/product/agent-ablation-method.md)。
+
+先运行 fixture 模式验证评测框架：
+
+```powershell
+python scripts/run_ablation.py `
+  --manifest benchmark/real-ablation.yaml `
+  --output artifacts/ablation-fixture `
+  --fixture-mode tests/fixtures/ablation-responses.json `
+  --approve-high-risk
+```
+
+Fixture 模式使用已知逆补丁，只能证明评测器有效，不能作为模型性能成绩。真实模型结果必须使用新 API Key、冻结代码和独立输出目录运行后才能写入简历。
+
+跨任务修复记忆默认关闭。设置 `REPROPILOT_MEMORY_DB` 后，主流程会把通过目标测试与最终运行验证的修复保存到本地 SQLite，并在后续同类别故障中检索；同仓库同提交经验会被排除。
+
 ## 产品案例与可点击原型
 
 仓库同时保留一套面向 AI 产品经理与 Coding Agent 岗位的完整产品案例：
 
+- [AI 产品经理作品附件（PDF）](output/pdf/ReproPilot-AI-Product-Portfolio.pdf)：11 页可直接投递版本，集中展示问题、方案、验证证据、个人贡献与边界；
 - [产品案例](docs/product/case-study.md)：用户问题、产品决策、MVP、工程证据、限制与下一轮迭代；
 - [产品需求文档](docs/product/prd.md) 与 [竞品分析](docs/product/competitor-analysis.md)；
 - [用户访谈工具包](docs/product/interview-kit.md) 与 [产品指标方案](docs/product/metrics-plan.md)；
 - [可点击原型说明](prototype/README.md)：创建任务、范围确认、执行时间线、高风险审批和可信度报告。
 - [作品集交付审计](docs/product/completion-audit.md)：已验证成果、证据边界和必须由项目所有者完成的最后步骤。
+
+附件内容更新后，可运行 `python -m pip install -e ".[portfolio]"` 与 `python scripts/build_portfolio_attachment.py` 重新生成 PDF。
 
 第一轮 5 位真实参与者的去身份化访谈与原型观察已经完成：5/5 完成核心流程，3/5 无帮助独立完成，2/5 初次把可信度分数误认为模型准确率。结果低于预设可用性门槛，详见[用户研究发现](docs/product/research-findings.md)；仓库不会用模拟参与者或估算数字替代真实研究证据。
 

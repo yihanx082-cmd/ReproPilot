@@ -1,1 +1,2 @@
 benchmark/injections/*.patch -whitespace
+*.pdf binary

@@ -25,6 +25,9 @@ dev = [
     "ruff>=0.9,<1",
     "types-PyYAML>=6.0,<7",
 ]
+portfolio = [
+    "reportlab>=4.2,<5",
+]
 
 [project.scripts]
 repropilot = "repropilot.cli:app"

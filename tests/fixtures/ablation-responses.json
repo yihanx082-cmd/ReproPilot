@@ -1,0 +1,4 @@
+{
+  "schema_version": 1,
+  "description": "Deterministic inverse-injection fixture. Framework validation only; not model performance evidence."
+}

@@ -12,6 +12,7 @@ import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
@@ -46,6 +47,12 @@ from repropilot.domain import (
 from repropilot.paper import StructuredLLM, extract_paper_spec
 from repropilot.patching import PatchTransaction, workspace_hash
 from repropilot.policy import assess_patch
+from repropilot.repair_memory import (
+    NullRepairMemory,
+    RepairExperience,
+    RepairMemory,
+    build_repair_context,
+)
 from repropilot.reporting import render_report
 from repropilot.repository import execution_request_facts, scan_repository
 from repropilot.sandbox import DockerSandbox
@@ -352,6 +359,7 @@ class DefaultRunServices:
         patch_generator: PatchGenerator,
         sandbox_factory: SandboxFactory | None = None,
         docker_executable: str | None = None,
+        repair_memory: RepairMemory | None = None,
     ) -> None:
         self.paper_llm = paper_llm
         self.patch_generator = patch_generator
@@ -359,6 +367,7 @@ class DefaultRunServices:
             "REPROPILOT_DOCKER_BIN", "docker"
         )
         self.sandbox_factory = sandbox_factory or self._docker_sandbox
+        self.repair_memory = repair_memory or NullRepairMemory()
         self._sandboxes: dict[Path, Sandbox] = {}
 
     def ingest(self, run_request: RunRequest, store: ArtifactStore) -> None:
@@ -497,6 +506,24 @@ class DefaultRunServices:
                     store.read_metadata_from(f"patch-{attempt - 1}.json")
                 ).diff
             ]
+        request = RunRequest.model_validate(store.read_metadata()["request"])
+        experiences = self.repair_memory.retrieve(
+            diagnosis,
+            repository_url=request.repository,
+            commit_sha=self._repository_commit(worktree),
+            top_k=2,
+        )
+        if experiences:
+            log_tail = build_repair_context(
+                current_failure=log_tail,
+                diagnosis=diagnosis,
+                allowed_paths=tuple(diagnosis.related_files),
+                previous_patch=prior_diffs[-1] if prior_diffs else None,
+                verification_failure=log_tail if attempt > 1 else None,
+                rollback_complete=attempt > 1,
+                experiences=experiences,
+            )
+        if prior_diffs:
             with self._temporary_patched_worktree(worktree, prior_diffs) as patched:
                 proposal = self.patch_generator.propose(diagnosis, patched, log_tail)
         else:
@@ -640,6 +667,52 @@ class DefaultRunServices:
             "repro_score.json", score_reproduction(bundle).model_dump(mode="json")
         )
         render_report(bundle, store.run_dir / "report.html")
+        if status is RunStatus.SUCCEEDED:
+            self._record_verified_repair(request, store)
+
+    def _record_verified_repair(self, request: RunRequest, store: ArtifactStore) -> None:
+        attempts = self._repair_attempts(store)
+        verified_attempts = [
+            attempt
+            for attempt in attempts
+            if attempt.diagnosis is not None
+            and attempt.patch is not None
+            and attempt.test_result is not None
+            and attempt.test_result.exit_code == 0
+            and not attempt.test_result.timed_out
+        ]
+        if not verified_attempts:
+            return
+        final = verified_attempts[-1]
+        assert final.diagnosis is not None
+        assert final.patch is not None
+        failed_diffs = tuple(
+            attempt.patch.diff
+            for attempt in attempts
+            if attempt.patch is not None
+            and (attempt.test_result is None or attempt.test_result.exit_code != 0)
+        )
+        usage = getattr(self.patch_generator, "usage", [])
+        model = usage[-1].model if usage else "unknown"
+        identity = hashlib.sha256(
+            (request.repository + final.patch.diff).encode("utf-8")
+        ).hexdigest()
+        self.repair_memory.record_verified(
+            RepairExperience(
+                id=identity,
+                category=final.diagnosis.category.value,
+                error_signature=" | ".join(final.diagnosis.evidence),
+                stack_tags=tuple(final.diagnosis.related_files),
+                root_cause=final.diagnosis.root_cause,
+                failed_diffs=failed_diffs,
+                verified_diff=final.patch.diff,
+                probe_summary="targeted test and final smoke run passed",
+                repository_url=request.repository,
+                commit_sha=self._repository_commit(self._worktree(store)),
+                model=model,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
 
     def _build_evidence_bundle(
         self, request: RunRequest, store: ArtifactStore
@@ -852,6 +925,19 @@ class DefaultRunServices:
     @staticmethod
     def _worktree(store: ArtifactStore) -> Path:
         return Path(store.read_metadata()["worktree_path"])
+
+    @staticmethod
+    def _repository_commit(worktree: Path) -> str:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=worktree,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode == 0:
+            return completed.stdout.strip()
+        return hashlib.sha256(str(worktree.resolve()).encode("utf-8")).hexdigest()
 
     @staticmethod
     def _record_command(

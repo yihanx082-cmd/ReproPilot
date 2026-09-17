@@ -17,7 +17,7 @@ ReproPilot 的**工程 MVP、公开可点击原型、真实用户研究第一轮
 | GitHub | 该时间点已完成 | 本机观察 `main...origin/main = 0 0`；[PR #7](https://github.com/yihanx082-cmd/ReproPilot/pull/7)、[PR #8](https://github.com/yihanx082-cmd/ReproPilot/pull/8) 已合并；[main CI 34481563402](https://github.com/yihanx082-cmd/ReproPilot/actions/runs/34481563402) 成功 |
 | Agent 核心 | 完成 | PDF 证据、代码审计、Docker、诊断、最小补丁、审批、回滚、正式实验、评分与 HTML 报告 |
 | Docker | 该时间点本机可用 | 本机观察 Client/Server `29.7.2`、`hello-world` 成功；18 项显式 Docker 测试通过 |
-| Python 质量 | 完成 | 153 项测试通过，默认套件仅跳过 4 项需要显式 Docker 开关的测试；Ruff、Mypy 通过 |
+| Python 质量 | 完成 | 166 项测试通过，默认套件仅跳过 4 项需要显式 Docker 开关的测试；Ruff、Mypy 通过 |
 | 网页 | 该时间点可访问 | [公开冻结 demo](https://repropilot-evidence-agent.yizhuliang42.chatgpt.site) 本机请求返回 HTTP 200；本地 `?live=1` 调用原状态机并读取真实 artifacts |
 | 前端质量 | 完成 | 15 项交互测试、4 项 Sites Worker 测试和生产构建通过 |
 | 真实复现实验 | 部分复现证据完成 | ResNet-20/CIFAR-10：Error `8.27% ± 0.00` 对论文 `8.75%`，可信度 `80/100 PARTIAL` |

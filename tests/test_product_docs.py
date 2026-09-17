@@ -107,7 +107,7 @@ def test_readme_links_product_case_with_bounded_research_claims() -> None:
 def test_completion_audit_separates_verified_and_owner_only_work() -> None:
     audit = (PRODUCT_DOCS / "completion-audit.md").read_text(encoding="utf-8")
 
-    for evidence in ["153 项测试", "18 项显式 Docker", "5 个固定仓库、8 个故障"]:
+    for evidence in ["166 项测试", "18 项显式 Docker", "5 个固定仓库、8 个故障"]:
         assert evidence in audit
     for boundary in ["不是模型准确率", "不是三次从头训练", "不能写成八案例成绩"]:
         assert boundary in audit

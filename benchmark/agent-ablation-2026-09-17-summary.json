@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "run_date": "2026-09-17",
+  "fixture_mode": false,
+  "git_commit": "2e42e3cf45d50496f2e23066eee7458fe1cb5fc1",
+  "git_dirty": false,
+  "manifest_sha256": "617206fde315219d42e07cf3e7c9311df18293336a7a6d1f14f72117e8861a34",
+  "repetitions": 3,
+  "repositories": 3,
+  "stages_per_case": 2,
+  "reported_model": "deepseek-flash",
+  "arms": {
+    "single_turn_raw": {
+      "cases": 9,
+      "complete_successes": 0,
+      "passed_stages": 9,
+      "total_stages": 18,
+      "model_calls": 9,
+      "tokens": 28394,
+      "unrelated_changed_lines": 0,
+      "total_changed_lines": 10,
+      "memory_hits": 0
+    },
+    "diagnosis_single_turn": {
+      "cases": 9,
+      "complete_successes": 0,
+      "passed_stages": 8,
+      "total_stages": 18,
+      "model_calls": 9,
+      "tokens": 29196,
+      "unrelated_changed_lines": 0,
+      "total_changed_lines": 9,
+      "memory_hits": 0
+    },
+    "feedback_loop": {
+      "cases": 9,
+      "complete_successes": 9,
+      "passed_stages": 18,
+      "total_stages": 18,
+      "model_calls": 18,
+      "tokens": 60047,
+      "unrelated_changed_lines": 0,
+      "total_changed_lines": 21,
+      "memory_hits": 0
+    },
+    "episodic_memory": {
+      "cases": 9,
+      "complete_successes": 9,
+      "passed_stages": 18,
+      "total_stages": 18,
+      "model_calls": 19,
+      "tokens": 62565,
+      "unrelated_changed_lines": 0,
+      "total_changed_lines": 21,
+      "memory_hits": 0
+    }
+  },
+  "deltas_percentage_points": {
+    "diagnosis_single_turn_vs_single_turn_raw": 0.0,
+    "feedback_loop_vs_single_turn_raw": 100.0,
+    "episodic_memory_vs_feedback_loop": 0.0
+  }
+}
